@@ -25,6 +25,7 @@ def ambil_data():
         return pd.DataFrame({'XAU': xau, 'DXY': dxy}, index=dates)
 
 data = ambil_data()
+
 if not data.empty:
     last = data.iloc[-1]
     c1, c2 = st.columns(2)
