@@ -6,10 +6,10 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 st.set_page_config(layout="wide")
-st.title("📊 XAU vs DXY Strength Meter - All Timeframes")
+st.title("📊 XAU vs DXY Strength Meter")
 
+# --- Ambil Data ---
 def ambil_data():
-    # Perpanjang ke 90 hari biar data weekly cukup
     end = datetime.now()
     start = end - timedelta(days=90)
     try:
@@ -28,11 +28,13 @@ def ambil_data():
 data = ambil_data()
 
 if not data.empty:
+    # --- Harga Terbaru ---
     last = data.iloc[-1]
     col1, col2 = st.columns(2)
     col1.metric("💰 Emas", f"${last['XAU']:.2f}")
     col2.metric("📊 DXY", f"{last['DXY']:.2f}")
 
+    # --- Fungsi Hitung Strength ---
     def hitung(df):
         df = df.copy()
         df['XN'] = (df['XAU'] - df['XAU'].rolling(14).min()) / (df['XAU'].rolling(14).max() - df['XAU'].rolling(14).min()) * 100
@@ -40,72 +42,142 @@ if not data.empty:
         df['S'] = df['XN'] - df['DN']
         return df
 
-    # === RESAMPLE SEMUA TIMEFRAME ===
-    # Weekly (Senin), Daily, 4H, 1H, 15min, 5min (data asli)
+    # --- Resample Semua Timeframe ---
     mingguan = data.resample('W-MON').last().dropna()
     harian = data.resample('D').last().dropna()
     empat_jam = data.resample('4h').last().dropna()
     satu_jam = data.resample('1h').last().dropna()
     limabelas_menit = data.resample('15min').last().dropna()
-    lima_menit = data  # data asli sudah 5 menit
+    lima_menit = data  # data asli 5 menit
 
-    # Simpan dalam list untuk diproses bersama
-    timeframes = [
-        ('Mingguan', mingguan, 'purple'),
-        ('Harian', harian, 'blue'),
-        ('4 Jam', empat_jam, 'green'),
-        ('1 Jam', satu_jam, 'orange'),
-        ('15 Menit', limabelas_menit, 'red'),
-        ('5 Menit', lima_menit, 'pink')
-    ]
+    timeframes = {
+        'Mingguan': mingguan,
+        'Harian': harian,
+        '4 Jam': empat_jam,
+        '1 Jam': satu_jam,
+        '15 Menit': limabelas_menit,
+        '5 Menit': lima_menit
+    }
 
-    # === SINYAL (Tampilkan 4 Timeframe Besar di Atas) ===
-    st.subheader("📡 Sinyal Terkini")
-    a, b, c, d = st.columns(4)
-    for df, nama, col in zip([mingguan, harian, empat_jam, satu_jam], 
-                             ['Mingguan', 'Harian', '4 Jam', '1 Jam'], 
-                             [a, b, c, d]):
+    # ================================================================
+    # 🆕 BAGIAN SINYAL: DIAGRAM BATANG + BUY/SELL
+    # ================================================================
+    st.subheader("📡 Sinyal & Strength Semua Timeframe")
+
+    # Kumpulkan data untuk diagram batang
+    labels = []
+    values = []
+    colors = []
+    sinyal_text = []
+
+    for nama, df in timeframes.items():
         if len(df) > 5:
             s = hitung(df)['S'].iloc[-1]
             if pd.isna(s):
-                status = "⏳"
-                display = "N/A"
+                s = 0
+                warna = 'gray'
+                sinyal = 'N/A'
             elif s > 20:
-                status = "🟢 XAU"
-                display = f"{s:.1f}"
+                warna = '#00cc00'  # Hijau terang
+                sinyal = '🟢 BUY'
             elif s < -20:
-                status = "🔴 DXY"
-                display = f"{s:.1f}"
+                warna = '#ff3333'  # Merah terang
+                sinyal = '🔴 SELL'
             else:
-                status = "⚪ Netral"
-                display = f"{s:.1f}"
-            col.metric(nama, display, status)
-
-    # === GRAFIK (Semua 6 Timeframe Ditampilkan Vertikal) ===
-    st.subheader("📈 Grafik Strength (Semua Timeframe)")
-
-    for nama, df, warna in timeframes:
-        if len(df) > 5:
-            fig = go.Figure()
-            s = hitung(df)
-            fig.add_trace(go.Scatter(
-                x=df.index, 
-                y=s['S'], 
-                mode='lines', 
-                name=nama, 
-                line=dict(color=warna, width=2)
-            ))
-            fig.add_hline(y=0, line_dash="dash", line_color="gray")
+                warna = '#ffcc00'  # Kuning
+                sinyal = '⚪ HOLD'
             
-            # Tambahkan area hijau/merah otomatis
-            fig.add_hrect(y0=20, y1=100, line_width=0, fillcolor="green", opacity=0.1)
-            fig.add_hrect(y0=-100, y1=-20, line_width=0, fillcolor="red", opacity=0.1)
-            
-            fig.update_layout(
-                height=220,  # Dikecilkan sedikit biar muat banyak
-                margin=dict(l=10, r=10, t=30, b=10),
-                title=nama,
-                xaxis_title="",
-                yaxis_title="Strength"
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            labels.append(nama)
+            values.append(s)
+            colors.append(warna)
+            sinyal_text.append(f"{sinyal}<br><b>{s:.1f}</b>")
+        else:
+            labels.append(nama)
+            values.append(0)
+            colors.append('gray')
+            sinyal_text.append("⏳ No Data")
+
+    # Buat diagram batang dengan Plotly
+    fig_bar = go.Figure()
+    fig_bar.add_trace(go.Bar(
+        x=labels,
+        y=values,
+        marker_color=colors,
+        text=sinyal_text,
+        textposition='outside',
+        textfont=dict(size=12, family='Arial Black'),
+        hovertemplate='%{x}<br>Strength: %{y:.1f}<br>%{text}<extra></extra>'
+    ))
+
+    # Tambahkan garis bantu di 0, +20, -20
+    fig_bar.add_hline(y=0, line_dash='dash', line_color='black', opacity=0.5)
+    fig_bar.add_hline(y=20, line_dash='dot', line_color='green', opacity=0.3)
+    fig_bar.add_hline(y=-20, line_dash='dot', line_color='red', opacity=0.3)
+
+    # Atur tampilan diagram batang
+    fig_bar.update_layout(
+        height=400,
+        margin=dict(l=10, r=10, t=40, b=10),
+        title="Kekuatan Relatif (XAU vs DXY) per Timeframe",
+        xaxis_title="Timeframe",
+        yaxis_title="Skor Strength (-100 s.d. +100)",
+        yaxis=dict(range=[-100, 100]),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)'
+    )
+
+    st.plotly_chart(fig_bar, use_container_width=True, config={'scrollZoom': False})
+
+    # ================================================================
+    # 📈 GRAFIK UTAMA (DROPDOWN) - Tidak berubah
+    # ================================================================
+    st.subheader("📈 Grafik Detail (Pilih Timeframe)")
+
+    pilihan = st.selectbox(
+        "Pilih timeframe untuk ditampilkan:",
+        list(timeframes.keys()),
+        index=2  # default 4 Jam
+    )
+
+    df_terpilih = timeframes[pilihan]
+    if len(df_terpilih) > 5:
+        s = hitung(df_terpilih)
+        nilai_terakhir = s['S'].iloc[-1]
+        if not pd.isna(nilai_terakhir):
+            if nilai_terakhir > 20:
+                status = "🟢 XAU Kuat (BUY)"
+            elif nilai_terakhir < -20:
+                status = "🔴 DXY Kuat (SELL)"
+            else:
+                status = "⚪ Netral (HOLD)"
+            st.metric(f"Strength {pilihan}", f"{nilai_terakhir:.1f}", status)
+
+        # Warna garis sesuai strength terakhir
+        if nilai_terakhir > 20:
+            warna_garis = '#00cc00'
+        elif nilai_terakhir < -20:
+            warna_garis = '#ff3333'
+        else:
+            warna_garis = '#ffcc00'
+
+        fig_line = go.Figure()
+        fig_line.add_trace(go.Scatter(
+            x=df_terpilih.index,
+            y=s['S'],
+            mode='lines',
+            name=pilihan,
+            line=dict(color=warna_garis, width=2.5)
+        ))
+        fig_line.add_hline(y=0, line_dash="dash", line_color="gray")
+        fig_line.add_hrect(y0=20, y1=100, line_width=0, fillcolor="green", opacity=0.1)
+        fig_line.add_hrect(y0=-100, y1=-20, line_width=0, fillcolor="red", opacity=0.1)
+
+        fig_line.update_layout(
+            height=450,
+            margin=dict(l=10, r=10, t=30, b=10),
+            title=f"Detail Strength - {pilihan}",
+            xaxis_title="Tanggal",
+            yaxis_title="Skor (-100 s.d. +100)",
+            xaxis=dict(rangeslider=dict(visible=True, thickness=0.05))
+        )
+        st.plotly_chart(fig_line, use_container_width=True, config={'scrollZoom': False})
