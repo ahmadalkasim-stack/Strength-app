@@ -176,101 +176,75 @@ for curr, plist in PAIRS_CONFIG.items():
 # --- Tentukan status STRONG/WEAK ---
 values = [currency_strength[c] for c in PAIRS_CONFIG.keys() if c not in ["XAU", "BTC"]]
 median = np.median(values) if values else 0
-strong_set = set()
-weak_set = set()
+status_dict = {}
 for curr in PAIRS_CONFIG.keys():
     if curr in ["XAU", "BTC"]:
-        continue
-    if currency_strength[curr] > median:
-        strong_set.add(curr)
+        status_dict[curr] = "STRONG"  # asumsikan strong
+    elif currency_strength[curr] > median:
+        status_dict[curr] = "STRONG"
     else:
-        weak_set.add(curr)
+        status_dict[curr] = "WEAK"
 
-# --- XAU & BTC di ATAS ---
-st.subheader("🟡 XAU & 🪙 BTC - Special Section")
-col_xau, col_btc = st.columns(2)
-with col_xau:
-    st.markdown("### XAU-STRONG")
-    st.caption(f"{selected_tf}")
-    for p in PAIRS_CONFIG["XAU"]:
-        if p in changes:
-            pips = changes[p]
-            color = "#FFD700" if pips > 20 else "#FF8C00" if pips < -20 else "#888"
-            arrow = "▲" if pips > 20 else "▼" if pips < -20 else "•"
-            st.markdown(f"<span style='color:{color};font-weight:bold;font-size:14px'>{arrow} {p} {pips:.0f}</span>", unsafe_allow_html=True)
-with col_btc:
-    st.markdown("### BTC-STRONG")
-    st.caption(f"{selected_tf}")
-    for p in PAIRS_CONFIG["BTC"]:
-        if p in changes:
-            pips = changes[p]
-            color = "#f7931a" if pips > 20 else "#ff6b6b" if pips < -20 else "#888"
-            arrow = "▲" if pips > 20 else "▼" if pips < -20 else "•"
-            st.markdown(f"<span style='color:{color};font-weight:bold;font-size:14px'>{arrow} {p} {pips:.0f}</span>", unsafe_allow_html=True)
-st.divider()
+# --- Fungsi untuk menampilkan satu mata uang ---
+def tampilkan_currency(currency, col):
+    status = status_dict[currency]
+    label = f"{currency}-{status}"
+    plist = PAIRS_CONFIG[currency]
+    with col:
+        st.markdown(f"### {label}")
+        st.caption(f"{selected_tf}")
+        total_pips = 0
+        # Tentukan warna dasar untuk semua pair di grup ini
+        base_color = "#00cc44" if status == "STRONG" else "#ff3333"
+        for pair in plist:
+            if pair in changes:
+                pips = changes[pair]
+                total_pips += abs(pips)
+                if abs(pips) > 20:
+                    color = base_color
+                else:
+                    color = "#88dd88" if status == "STRONG" else "#ff8888"
+                arrow = "▲" if pips > 0 else "▼" if pips < 0 else "•"
+                st.markdown(f"<span style='color:{color};font-size:14px'>{arrow} {pair} {pips:.0f}</span>", unsafe_allow_html=True)
+        st.caption(f"Total: {total_pips:.0f}")
+        st.divider()
 
-# --- Currency Fiat ---
+# --- Tampilan: Susunan Baris ---
 st.subheader(f"📊 Currency Dominance IA - {selected_tf}")
-sorted_curr = sorted([c for c in currency_strength if c not in ["XAU", "BTC"]], key=lambda x: currency_strength[x], reverse=True)
-strong_list = [c for c in sorted_curr if c in strong_set]
-weak_list = [c for c in sorted_curr if c in weak_set]
-cols = st.columns(2)
 
-with cols[0]:
-    for currency in strong_list:
-        label = f"{currency}-STRONG"
-        st.markdown(f"### {label}")
-        st.caption(f"{selected_tf}")
-        plist = PAIRS_CONFIG[currency]
-        total_pips = 0
-        for pair in plist:
-            if pair in changes:
-                pips = changes[pair]
-                total_pips += abs(pips)
-                if pips > 20:
-                    color = "#00cc44"
-                    arrow = "▲"
-                elif pips < -20:
-                    color = "#00cc44"
-                    arrow = "▼"
-                else:
-                    color = "#88dd88"
-                    arrow = "•"
-                st.markdown(f"<span style='color:{color};font-size:14px'>{arrow} {pair} {pips:.0f}</span>", unsafe_allow_html=True)
-        st.caption(f"Total: {total_pips:.0f}")
-        st.divider()
+# Baris 1: XAU | BTC
+col1, col2 = st.columns(2)
+tampilkan_currency("XAU", col1)
+tampilkan_currency("BTC", col2)
 
-with cols[1]:
-    for currency in weak_list:
-        label = f"{currency}-WEAK"
-        st.markdown(f"### {label}")
-        st.caption(f"{selected_tf}")
-        plist = PAIRS_CONFIG[currency]
-        total_pips = 0
-        for pair in plist:
-            if pair in changes:
-                pips = changes[pair]
-                total_pips += abs(pips)
-                if pips > 20:
-                    color = "#ff3333"
-                    arrow = "▲"
-                elif pips < -20:
-                    color = "#ff3333"
-                    arrow = "▼"
-                else:
-                    color = "#ff8888"
-                    arrow = "•"
-                st.markdown(f"<span style='color:{color};font-size:14px'>{arrow} {pair} {pips:.0f}</span>", unsafe_allow_html=True)
-        st.caption(f"Total: {total_pips:.0f}")
-        st.divider()
+# Baris 2: JPY | USD
+col1, col2 = st.columns(2)
+tampilkan_currency("JPY", col1)
+tampilkan_currency("USD", col2)
+
+# Baris 3: EUR | GBP
+col1, col2 = st.columns(2)
+tampilkan_currency("EUR", col1)
+tampilkan_currency("GBP", col2)
+
+# Baris 4: AUD | NZD
+col1, col2 = st.columns(2)
+tampilkan_currency("AUD", col1)
+tampilkan_currency("NZD", col2)
+
+# Baris 5: CAD | CHF
+col1, col2 = st.columns(2)
+tampilkan_currency("CAD", col1)
+tampilkan_currency("CHF", col2)
 
 # --- Daily Currency Strength Meter ---
 st.subheader("📊 Daily Currency Strength Meter")
+sorted_curr = [c for c in PAIRS_CONFIG.keys() if c not in ["XAU", "BTC"]]
+sorted_curr_sorted = sorted(sorted_curr, key=lambda x: currency_strength[x], reverse=True)
 max_val = max(abs(v) for v in currency_strength.values() if v != 0) if currency_strength else 1
-normalized = {c: (currency_strength[c] / max_val) * 10 for c in sorted_curr}
-sorted_norm = sorted(normalized.items(), key=lambda x: x[1], reverse=True)
-currs = [c[0] for c in sorted_norm]
-vals = [c[1] for c in sorted_norm]
+normalized = {c: (currency_strength[c] / max_val) * 10 for c in sorted_curr_sorted}
+currs = [c[0] for c in normalized.items()]
+vals = [c[1] for c in normalized.items()]
 
 fig = go.Figure()
 fig.add_trace(go.Bar(
