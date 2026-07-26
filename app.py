@@ -18,48 +18,77 @@ try:
 except:
     st.sidebar.error("❌ Secrets tidak ditemukan!")
 
-# --- Konfigurasi Pair ---
+# --- Konfigurasi Pair (Sesuai gambar) ---
 PAIRS_CONFIG = {
-    "JPY": ["AUDJPY", "GBPJPY", "EURJPY", "NZDJPY", "CADJPY", "USDJPY", "CHFJPY"],
-    "CHF": ["AUDCHF", "EURCHF", "GBPCHF", "NZDCHF", "CADCHF", "USDCHF", "CHFJPY"],
-    "USD": ["AUDUSD", "EURUSD", "GBPUSD", "NZDUSD", "USDCAD", "USDCHF", "USDJPY"],
-    "GBP": ["GBPAUD", "GBPNZD", "EURGBP", "GBPUSD", "GBPCHF", "GBPJPY"],
-    "EUR": ["EURAUD", "EURCAD", "EURGBP", "EURUSD", "EURCHF", "EURJPY"],
-    "CAD": ["USDCAD", "AUDCAD", "CADJPY", "CADCHF", "EURCAD", "NZDCAD", "GBPCAD"],
-    "AUD": ["AUDUSD", "AUDJPY", "EURAUD", "AUDNZD", "GBPAUD", "AUDCHF", "AUDCAD"],
-    "NZD": ["NZDUSD", "NZDJPY", "EURNZD", "AUDNZD", "GBPNZD", "NZDCHF", "NZDCAD"],
-    "XAU": ["XAUUSD", "XAUJPY", "XAUGBP", "XAUEUR", "XAUAUD", "XAUNZD", "XAUCAD", "XAUCHF"],
-    "BTC": ["BTCUSD", "BTCJPY", "BTCGBP", "BTCEUR", "BTCAUD", "BTCNZD", "BTCCAD", "BTCCHF"]
+    "JPY": ["GBPJPY", "AUDJPY", "EURJPY", "CADJPY", "NZDJPY", "USDJPY", "CHFJPY"],
+    "CHF": ["AUDCHF", "GBPCHF", "EURCHF", "NZDCHF", "CADCHF", "USDCHF", "CHFJPY"],
+    "USD": ["AUDUSD", "USDCAD", "EURUSD", "GBPUSD", "NZDUSD", "USDCHF", "USDJPY"],
+    "GBP": ["GBPAUD", "GBPNZD", "GBPCAD", "EURGBP", "GBPUSD", "GBPCHF", "GBPJPY"],
+    "EUR": ["EURAUD", "EURNZD", "EURCAD", "EURGBP", "EURCHF", "EURUSD", "EURJPY"],
+    "CAD": ["AUDCAD", "NZDCAD", "EURCAD", "GBPCAD", "CADCHF", "USDCAD", "CADJPY"],
+    "NZD": ["AUDNZD", "NZDCAD", "NZDUSD", "NZDCHF", "EURNZD", "GBPNZD", "NZDJPY"],
+    "AUD": ["AUDNZD", "AUDCAD", "AUDCHF", "AUDUSD", "EURAUD", "AUDJPY", "GBPAUD"]
 }
 
-# --- Fungsi Simulasi Realistis (pasti ada yang positif & negatif) ---
-def generate_smart_simulation():
-    """Menghasilkan data yang masuk akal: ada yang strong dan weak."""
+# --- Fungsi Simulasi (menghasilkan data dengan variasi) ---
+def generate_realistic_data():
+    """Menghasilkan data untuk semua pair dengan variasi yang masuk akal."""
     np.random.seed(int(datetime.now().timestamp()) % 10000)
-    base = {
-        # EUR pair: positif (karena EUR strong) → EUR strong = hijau
-        "EURAUD": np.random.normal(900, 100), "EURCAD": np.random.normal(50, 20),
-        "EURGBP": np.random.normal(40, 10), "EURUSD": np.random.normal(300, 40),
-        "EURCHF": np.random.normal(300, 40), "EURJPY": np.random.normal(900, 80),
-        # GBP pair: negatif (karena GBP weak) → GBP weak = merah
-        "GBPAUD": np.random.normal(-800, 80), "GBPNZD": np.random.normal(-300, 40),
-        "EURGBP": np.random.normal(40, 10),  # EUR strong vs GBP weak → positif
-        "GBPUSD": np.random.normal(-200, 40), "GBPCHF": np.random.normal(-280, 30),
-        "GBPJPY": np.random.normal(-900, 80),
-        # JPY: tergantung arah
-        "AUDJPY": np.random.normal(1100, 100), "USDJPY": np.random.normal(450, 40),
-        "CHFJPY": np.random.normal(300, 30), "NZDJPY": np.random.normal(600, 60),
-        "CADJPY": np.random.normal(600, 60),
-        # XAU & BTC: positif
-        "XAUUSD": np.random.normal(10000, 500), "XAUJPY": np.random.normal(1500, 100),
-        "BTCUSD": np.random.normal(1200, 100)
-    }
-    # Tambahkan noise kecil
-    for k in base:
-        base[k] += np.random.normal(0, 20)
-    return {k: int(v) for k, v in base.items()}
+    data = {}
+    # JPY
+    data["GBPJPY"] = int(np.random.normal(1057, 50))
+    data["AUDJPY"] = int(np.random.normal(973, 50))
+    data["EURJPY"] = int(np.random.normal(964, 50))
+    data["CADJPY"] = int(np.random.normal(602, 30))
+    data["NZDJPY"] = int(np.random.normal(550, 30))
+    data["USDJPY"] = int(np.random.normal(515, 25))
+    data["CHFJPY"] = int(np.random.normal(420, 20))
+    # CHF
+    data["AUDCHF"] = int(np.random.normal(350, 20))
+    data["GBPCHF"] = int(np.random.normal(286, 15))
+    data["EURCHF"] = int(np.random.normal(266, 15))
+    data["NZDCHF"] = int(np.random.normal(188, 10))
+    data["CADCHF"] = int(np.random.normal(161, 10))
+    data["USDCHF"] = int(np.random.normal(55, 5))
+    # USD
+    data["AUDUSD"] = int(np.random.normal(369, 20))
+    data["USDCAD"] = int(np.random.normal(348, 20))
+    data["EURUSD"] = int(np.random.normal(282, 15))
+    data["GBPUSD"] = int(np.random.normal(261, 15))
+    data["NZDUSD"] = int(np.random.normal(150, 10))
+    # GBP
+    data["GBPAUD"] = int(np.random.normal(870, 40))
+    data["GBPNZD"] = int(np.random.normal(327, 20))
+    data["GBPCAD"] = int(np.random.normal(105, 10))
+    data["EURGBP"] = int(np.random.normal(2, 5))
+    # EUR
+    data["EURAUD"] = int(np.random.normal(630, 30))
+    data["EURNZD"] = int(np.random.normal(230, 15))
+    data["EURCAD"] = int(np.random.normal(1, 5))
+    data["EURGBP"] = int(np.random.normal(2, 5))
+    # CAD
+    data["AUDCAD"] = int(np.random.normal(321, 20))
+    data["NZDCAD"] = int(np.random.normal(38, 5))
+    data["EURCAD"] = int(np.random.normal(1, 5))
+    data["GBPCAD"] = int(np.random.normal(105, 10))
+    # NZD
+    data["AUDNZD"] = int(np.random.normal(229, 15))
+    data["NZDCAD"] = int(np.random.normal(38, 5))
+    data["NZDUSD"] = int(np.random.normal(150, 10))
+    data["NZDCHF"] = int(np.random.normal(188, 10))
+    # AUD
+    data["AUDNZD"] = int(np.random.normal(229, 15))
+    data["AUDCAD"] = int(np.random.normal(321, 20))
+    data["AUDCHF"] = int(np.random.normal(350, 20))
+    data["AUDUSD"] = int(np.random.normal(369, 20))
+    data["EURAUD"] = int(np.random.normal(630, 30))
+    data["AUDJPY"] = int(np.random.normal(973, 50))
+    # Tambahkan noise
+    for k in data:
+        data[k] += int(np.random.normal(0, 10))
+    return data
 
-# --- Fungsi Async ---
+# --- Fungsi Async untuk data real ---
 def run_async(coro):
     try:
         loop = asyncio.get_running_loop()
@@ -82,7 +111,7 @@ async def get_real_data(pairs, tf):
                     if rates and len(rates) >= 2:
                         cp = rates[0]['close']
                         cn = rates[-1]['close']
-                        mult = 100 if ('JPY' in pair or 'XAU' in pair or 'BTC' in pair) else 10000
+                        mult = 100 if 'JPY' in pair else 10000
                         change = (cn - cp) * mult
                         await account.disconnect()
                         return pair, change
@@ -111,7 +140,7 @@ for pl in PAIRS_CONFIG.values():
     all_pairs.extend(pl)
 
 changes = {}
-with st.spinner("⏳ Mengambil data..."):
+with st.spinner(f"⏳ Mengambil data {selected_tf}..."):
     try:
         real = run_async(get_real_data(all_pairs, tf_value))
         non_zero = {k:v for k,v in real.items() if abs(v) > 1}
@@ -119,125 +148,119 @@ with st.spinner("⏳ Mengambil data..."):
             changes = real
             st.sidebar.success(f"✅ Real: {len(non_zero)} pair")
         else:
-            st.sidebar.warning("⚠️ Real 0, pakai simulasi cerdas")
-            changes = generate_smart_simulation()
+            st.sidebar.warning("⚠️ Real 0, pakai simulasi")
+            changes = generate_realistic_data()
     except:
         st.sidebar.error("❌ Gagal, pakai simulasi")
-        changes = generate_smart_simulation()
+        changes = generate_realistic_data()
 
-# --- Hitung Strength dengan logika yang benar ---
+# --- Hitung Strength per Currency ---
 currency_strength = {}
 for curr, plist in PAIRS_CONFIG.items():
     total, cnt = 0, 0
     for p in plist:
         if p in changes:
-            # Jika mata uang adalah base (posisi pertama)
             if p.startswith(curr):
                 total += changes[p]
                 cnt += 1
-            # Jika mata uang adalah quote (posisi kedua)
             elif p.endswith(curr) or curr in p[3:]:
-                total -= changes[p]  # balik tandanya
+                total -= changes[p]
                 cnt += 1
     currency_strength[curr] = total / cnt if cnt > 0 else 0
 
-# --- Tentukan status berdasarkan tanda (bukan ranking) ---
-threshold = 20.0
-currency_status = {}
+# --- Tentukan status STRONG/WEAK (berdasarkan median) ---
+values = [currency_strength[c] for c in PAIRS_CONFIG.keys()]
+median = np.median(values) if values else 0
+strong_set = set()
+weak_set = set()
 for curr, val in currency_strength.items():
-    if val > threshold:
-        currency_status[curr] = "STRONG"
-    elif val < -threshold:
-        currency_status[curr] = "WEAK"
+    if val > median:
+        strong_set.add(curr)
     else:
-        currency_status[curr] = "NEUTRAL"
+        weak_set.add(curr)
 
-# --- Tampilan 3 Kolom ---
+# --- Tampilan: 2 Kolom (Strong di kiri, Weak di kanan) ---
 st.subheader(f"📊 Currency Dominance IA - {selected_tf}")
 
-# Urutan: Strong, Weak, Neutral
-ordered = []
-for status in ["STRONG", "WEAK", "NEUTRAL"]:
-    for curr, s in currency_status.items():
-        if s == status and curr not in ["XAU", "BTC"]:
-            ordered.append(curr)
+# Urutkan currency berdasarkan strength (dari tertinggi ke terendah)
+sorted_curr = sorted(currency_strength.items(), key=lambda x: x[1], reverse=True)
+ordered_currencies = [c[0] for c in sorted_curr]
 
-cols = st.columns(3)
-col_idx = 0
+# Bagi menjadi strong dan weak sesuai status
+strong_list = [c for c in ordered_currencies if c in strong_set]
+weak_list = [c for c in ordered_currencies if c in weak_set]
 
-for currency in ordered:
-    status = currency_status[currency]
-    label = f"{currency}-{status}"
-    plist = PAIRS_CONFIG[currency]
-    with cols[col_idx % 3]:
+cols = st.columns(2)
+
+# Kolom kiri: Strong
+with cols[0]:
+    for currency in strong_list:
+        label = f"{currency}-STRONG"
         st.markdown(f"### {label}")
+        st.caption(f"{selected_tf}")
+        plist = PAIRS_CONFIG[currency]
         total_pips = 0
         for pair in plist:
             if pair in changes:
                 pips = changes[pair]
                 total_pips += abs(pips)
-                # WARNA: jika positif → hijau, negatif → merah
                 if pips > 20:
                     color = "#00cc44"
-                    arrow = "▲▲"
-                elif pips > 5:
-                    color = "#88dd88"
                     arrow = "▲"
                 elif pips < -20:
                     color = "#ff3333"
-                    arrow = "▼▼"
-                elif pips < -5:
-                    color = "#ff8888"
                     arrow = "▼"
                 else:
                     color = "#888888"
                     arrow = "•"
-                st.markdown(f"<span style='color:{color};font-size:13px'>{arrow} {pair} {pips:.0f}</span>", unsafe_allow_html=True)
+                st.markdown(f"<span style='color:{color};font-size:14px'>{arrow} {pair} {pips:.0f}</span>", unsafe_allow_html=True)
         st.caption(f"Total: {total_pips:.0f}")
         st.divider()
-    col_idx += 1
 
-# --- XAU & BTC ---
-st.subheader("🟡 XAU & 🪙 BTC - Special Section")
-c1, c2 = st.columns(2)
-with c1:
-    xau_status = currency_status.get("XAU", "NEUTRAL")
-    st.markdown(f"### XAU-{xau_status}")
-    for p in PAIRS_CONFIG["XAU"]:
-        if p in changes:
-            pips = changes[p]
-            color = "#FFD700" if pips > 20 else "#FF8C00" if pips < -20 else "#888"
-            arrow = "▲" if pips > 20 else "▼" if pips < -20 else "•"
-            st.markdown(f"<span style='color:{color};font-weight:bold;font-size:14px'>{arrow} {p} {pips:.0f}</span>", unsafe_allow_html=True)
-with c2:
-    btc_status = currency_status.get("BTC", "NEUTRAL")
-    st.markdown(f"### BTC-{btc_status}")
-    for p in PAIRS_CONFIG["BTC"]:
-        if p in changes:
-            pips = changes[p]
-            color = "#f7931a" if pips > 20 else "#ff6b6b" if pips < -20 else "#888"
-            arrow = "▲" if pips > 20 else "▼" if pips < -20 else "•"
-            st.markdown(f"<span style='color:{color};font-weight:bold;font-size:14px'>{arrow} {p} {pips:.0f}</span>", unsafe_allow_html=True)
-
-st.divider()
+# Kolom kanan: Weak
+with cols[1]:
+    for currency in weak_list:
+        label = f"{currency}-WEAK"
+        st.markdown(f"### {label}")
+        st.caption(f"{selected_tf}")
+        plist = PAIRS_CONFIG[currency]
+        total_pips = 0
+        for pair in plist:
+            if pair in changes:
+                pips = changes[pair]
+                total_pips += abs(pips)
+                if pips > 20:
+                    color = "#00cc44"
+                    arrow = "▲"
+                elif pips < -20:
+                    color = "#ff3333"
+                    arrow = "▼"
+                else:
+                    color = "#888888"
+                    arrow = "•"
+                st.markdown(f"<span style='color:{color};font-size:14px'>{arrow} {pair} {pips:.0f}</span>", unsafe_allow_html=True)
+        st.caption(f"Total: {total_pips:.0f}")
+        st.divider()
 
 # --- Daily Currency Strength Meter ---
 st.subheader("📊 Daily Currency Strength Meter")
-sv = {c: currency_strength[c] for c in currency_strength if c not in ["XAU", "BTC"]}
-max_abs = max(abs(v) for v in sv.values()) if sv else 1
-normalized = {c: (v / max_abs) * 100 for c, v in sv.items()}
-sorted_sv = sorted(normalized.items(), key=lambda x: x[1], reverse=True)
-currs = [c[0] for c in sorted_sv]
-vals = [c[1] for c in sorted_sv]
+
+# Normalisasi ke skala 0-10 (seperti gambar)
+max_val = max(abs(v) for v in currency_strength.values()) if currency_strength else 1
+normalized = {c: (currency_strength[c] / max_val) * 10 for c in ordered_currencies}
+sorted_norm = sorted(normalized.items(), key=lambda x: x[1], reverse=True)
+currs = [c[0] for c in sorted_norm]
+vals = [c[1] for c in sorted_norm]
 
 fig = go.Figure()
 fig.add_trace(go.Bar(
     x=vals, y=currs, orientation='h',
     marker_color=['#2ecc71' if v > 0 else '#e74c3c' for v in vals],
-    text=[f"{v:.1f}" for v in vals], textposition='outside'
+    text=[f"{v:.2f}" for v in vals], textposition='outside'
 ))
-fig.update_layout(height=200, margin=dict(l=10,r=10,t=10,b=10), xaxis_title="Strength Score", xaxis=dict(range=[-100, 100]))
+fig.update_layout(height=250, margin=dict(l=10,r=10,t=10,b=10), xaxis_title="Strength Score")
 st.plotly_chart(fig, use_container_width=True)
 
+# --- Footer ---
 st.caption(f"🔄 Update: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
-st.caption("🟢 ▲ = Naik (BUY) | 🔴 ▼ = Turun (SELL) | 🟡 XAU | 🪙 BTC")
+st.caption("🟢 ▲ = Naik | 🔴 ▼ = Turun")
