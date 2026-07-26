@@ -4,9 +4,10 @@ import asyncio
 from metaapi_cloud_sdk import MetaApi
 from datetime import datetime
 import numpy as np
+import plotly.graph_objects as go
 
-st.set_page_config(layout="wide", page_title="G4 LFX - Currency Strength")
-st.title("📊 G4 LFX - Currency Strength Meter (Real-time)")
+st.set_page_config(layout="wide", page_title="G4 LFX - Currency Dominance")
+st.title("💰 G4 LFX - Currency Dominance IA")
 
 # --- Secrets ---
 try:
@@ -16,31 +17,32 @@ except:
     st.error("❌ Secrets tidak ditemukan!")
     st.stop()
 
-# --- Konfigurasi Pair ---
+# --- Konfigurasi Pair (SEMUA + "m") ---
 PAIRS = {
-    "JPY": ["USDJPY", "EURJPY", "GBPJPY", "NZDJPY", "AUDJPY", "CHFJPY", "CADJPY"],
-    "USD": ["EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "USDCHF", "USDCAD", "USDJPY"],
-    "EUR": ["EURUSD", "EURJPY", "EURGBP", "EURNZD", "EURAUD", "EURCHF", "EURCAD"],
-    "GBP": ["GBPUSD", "GBPJPY", "EURGBP", "GBPNZD", "GBPAUD", "GBPCHF", "GBPCAD"],
+    "JPY": ["AUDJPY", "GBPJPY", "EURJPY", "NZDJPY", "CADJPY", "USDJPY", "CHFJPY"],
+    "CHF": ["AUDCHF", "EURCHF", "GBPCHF", "NZDCHF", "CADCHF", "USDCHF", "CHFJPY"],
+    "USD": ["AUDUSD", "EURUSD", "GBPUSD", "NZDUSD", "USDCAD", "USDCHF", "USDJPY"],
+    "GBP": ["GBPAUD", "GBPNZD", "EURGBP", "GBPUSD", "GBPCHF", "GBPJPY"],
+    "EUR": ["EURAUD", "EURCAD", "EURGBP", "EURUSD", "EURCHF", "EURJPY"],
+    "CAD": ["USDCAD", "AUDCAD", "CADJPY", "CADCHF", "EURCAD", "NZDCAD", "GBPCAD"],
     "AUD": ["AUDUSD", "AUDJPY", "EURAUD", "AUDNZD", "GBPAUD", "AUDCHF", "AUDCAD"],
     "NZD": ["NZDUSD", "NZDJPY", "EURNZD", "AUDNZD", "GBPNZD", "NZDCHF", "NZDCAD"],
-    "CAD": ["USDCAD", "CADJPY", "EURCAD", "GBPCAD", "AUDCAD", "CADCHF", "NZDCAD"],
-    "CHF": ["USDCHF", "CHFJPY", "EURCHF", "GBPCHF", "AUDCHF", "CADCHF", "NZDCHF"],
     "XAU": ["XAUUSD", "XAUJPY", "XAUGBP", "XAUEUR", "XAUAUD", "XAUNZD", "XAUCAD", "XAUCHF"],
     "BTC": ["BTCUSD", "BTCJPY", "BTCGBP", "BTCEUR", "BTCAUD", "BTCNZD", "BTCCAD", "BTCCHF"]
 }
 
-XAU_SYMBOLS = {
-    "XAUUSD": "XAUUSD", "XAUJPY": "XAUJPY", "XAUGBP": "XAUGBP",
-    "XAUEUR": "XAUEUR", "XAUAUD": "XAUAUD", "XAUNZD": "XAUNZD",
-    "XAUCAD": "XAUCAD", "XAUCHF": "XAUCHF"
-}
+# --- Fungsi untuk menambahkan "m" di belakang simbol ---
+def get_symbol_with_m(pair):
+    """Tambahkan 'm' di belakang simbol jika belum ada."""
+    if pair.endswith("m"):
+        return pair
+    return pair + "m"
 
-BTC_SYMBOLS = {
-    "BTCUSD": "BTCUSD", "BTCJPY": "BTCJPY", "BTCGBP": "BTCGBP",
-    "BTCEUR": "BTCEUR", "BTCAUD": "BTCAUD", "BTCNZD": "BTCNZD",
-    "BTCCAD": "BTCCAD", "BTCCHF": "BTCCHF"
-}
+# --- Daftar semua pair dengan "m" ---
+all_pairs = []
+for pair_list in PAIRS.values():
+    for pair in pair_list:
+        all_pairs.append(get_symbol_with_m(pair))
 
 # --- Fungsi Async ---
 def run_async(coro):
@@ -51,20 +53,34 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
-async def get_change(symbol, timeframe, count=2):
-    try:
-        api = MetaApi(token=TOKEN)
-        account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
-        await account.connect()
-        rates = await account.get_rates(symbol, timeframe, count)
-        await account.disconnect()
-        if rates and len(rates) >= 2:
-            close_prev = rates[0]['close']
-            close_now = rates[-1]['close']
-            return ((close_now - close_prev) / close_prev) * 100
-        return 0.0
-    except:
-        return 0.0
+async def get_all_changes(pairs, tf_value):
+    """Ambil perubahan semua pair secara paralel."""
+    async def fetch_one(pair):
+        try:
+            symbol = get_symbol_with_m(pair)
+            api = MetaApi(token=TOKEN)
+            account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
+            await account.connect()
+            rates = await account.get_rates(symbol, tf_value, 2)
+            await account.disconnect()
+            if rates and len(rates) >= 2:
+                close_prev = rates[0]['close']
+                close_now = rates[-1]['close']
+                # Konversi ke pips
+                if 'JPY' in pair or 'XAU' in pair or 'BTC' in pair:
+                    pip_multiplier = 100
+                else:
+                    pip_multiplier = 10000
+                change_pips = (close_now - close_prev) * pip_multiplier
+                return pair, change_pips
+            else:
+                return pair, 0.0
+        except Exception as e:
+            return pair, 0.0
+
+    tasks = [fetch_one(pair) for pair in pairs]
+    results = await asyncio.gather(*tasks)
+    return dict(results)
 
 # --- Sidebar ---
 st.sidebar.header("⚙️ Pengaturan")
@@ -76,30 +92,13 @@ if st.sidebar.button("🔄 Refresh Data"):
     st.rerun()
 
 st.sidebar.caption(f"🕒 Data: {selected_tf}")
-st.sidebar.caption("🟢 BUY | 🔴 SELL | ⚪ HOLD")
+st.sidebar.caption("📌 Semua simbol menggunakan akhiran 'm'")
 
 # --- Ambil Data ---
-st.info(f"⏳ Mengambil data untuk {selected_tf}...")
+with st.spinner(f"⏳ Mengambil data {selected_tf}..."):
+    changes = run_async(get_all_changes(all_pairs, tf_value))
 
-all_pairs = []
-for currency, pair_list in PAIRS.items():
-    all_pairs.extend(pair_list)
-
-changes = {}
-progress = st.progress(0)
-all_symbols = {**XAU_SYMBOLS, **BTC_SYMBOLS}
-
-for idx, pair in enumerate(all_pairs):
-    if pair in all_symbols:
-        symbol = all_symbols[pair]
-    else:
-        symbol = pair
-    changes[pair] = run_async(get_change(symbol, tf_value, 2))
-    progress.progress((idx + 1) / len(all_pairs))
-progress.empty()
-st.success("✅ Data berhasil diambil!")
-
-# --- Hitung Strength ---
+# --- Hitung Strength per Currency ---
 currency_strength = {}
 for currency, pair_list in PAIRS.items():
     total, count = 0, 0
@@ -109,6 +108,7 @@ for currency, pair_list in PAIRS.items():
                 total += changes[pair]
                 count += 1
             else:
+                # Jika currency adalah quote (posisi kedua), balik tandanya
                 if currency in pair[3:] or currency in pair.split("/")[-1]:
                     total -= changes[pair]
                 else:
@@ -116,7 +116,8 @@ for currency, pair_list in PAIRS.items():
                 count += 1
     currency_strength[currency] = total / count if count > 0 else 0
 
-threshold = 0.1
+# Tentukan Strong/Weak
+threshold = 2.0  # dalam pip
 currency_status = {}
 for curr, val in currency_strength.items():
     if val > threshold:
@@ -126,91 +127,95 @@ for curr, val in currency_strength.items():
     else:
         currency_status[curr] = "NEUTRAL"
 
-# --- Tampilan ---
-st.subheader(f"📊 Currency Strength Meter - {selected_tf}")
+# --- Tampilan: Currency Dominance IA ---
+st.subheader(f"📊 Currency Dominance IA - {selected_tf}")
 
-cols = st.columns(len(currency_status))
-for idx, (curr, status) in enumerate(currency_status.items()):
-    with cols[idx]:
-        st.metric(curr, status, delta=f"{currency_strength[curr]:.2f}%", delta_color="normal")
+# Urutan tampilan: Strong dulu, lalu Weak, lalu Neutral
+ordered_currencies = []
+for status in ["STRONG", "WEAK", "NEUTRAL"]:
+    for curr, s in currency_status.items():
+        if s == status and curr not in ["XAU", "BTC"]:
+            ordered_currencies.append(curr)
 
-st.divider()
+# Tampilkan dalam 2 kolom
+cols = st.columns(2)
+col_idx = 0
 
-def get_signal(pair, base, quote):
-    base_strength = currency_strength.get(base, 0)
-    quote_strength = currency_strength.get(quote, 0)
-    if base_strength > threshold and quote_strength < -threshold:
-        return "BUY", "green"
-    elif base_strength < -threshold and quote_strength > threshold:
-        return "SELL", "red"
-    else:
-        return "HOLD", "gray"
-
-currencies_to_show = ["JPY", "USD", "EUR", "GBP", "AUD", "NZD", "CAD", "CHF"]
-
-for currency in currencies_to_show:
-    st.subheader(f"{'🟢' if currency_status[currency]=='STRONG' else '🔴' if currency_status[currency]=='WEAK' else '⚪'} {currency} - {currency_status[currency]}")
+for currency in ordered_currencies:
+    status = currency_status[currency]
+    label = f"{currency}-{status}"
     pair_list = PAIRS[currency]
-    cols = st.columns(4)
-    for idx, pair in enumerate(pair_list):
-        with cols[idx % 4]:
+    
+    with cols[col_idx % 2]:
+        st.markdown(f"### {label}")
+        total_pips = 0
+        for pair in pair_list:
             if pair in changes:
-                change = changes[pair]
-                base = pair[:3]
-                quote = pair[3:]
-                if pair.startswith("XAU") or pair.startswith("BTC"):
-                    base = pair[:3]
-                    quote = pair[3:]
-                signal, color = get_signal(pair, base, quote)
-                st.markdown(f"**{pair}**")
-                st.markdown(f"<span style='color:{color};font-weight:bold'>{signal}</span>", unsafe_allow_html=True)
-                st.caption(f"Δ {change:.2f}%")
-            else:
-                st.markdown(f"**{pair}**")
-                st.caption("N/A")
-    st.divider()
+                pips = changes[pair]
+                total_pips += abs(pips)
+                if pips > 5:
+                    color = "green"
+                elif pips < -5:
+                    color = "red"
+                else:
+                    color = "gray"
+                st.markdown(f"<span style='color:{color};'>{pair} {pips:.0f}</span>", unsafe_allow_html=True)
+        st.caption(f"Total: {total_pips:.0f}")
+        st.divider()
+    col_idx += 1
 
-# --- XAU Section ---
-st.header("🟡 XAU - Special Section")
-st.subheader(f"{'🟢' if currency_status.get('XAU','NEUTRAL')=='STRONG' else '🔴' if currency_status.get('XAU','NEUTRAL')=='WEAK' else '⚪'} XAU - {currency_status.get('XAU','NEUTRAL')}")
-xau_pairs = PAIRS["XAU"]
-cols = st.columns(4)
-for idx, pair in enumerate(xau_pairs):
-    with cols[idx % 4]:
+# --- Khusus XAU & BTC ---
+st.subheader("🟡 XAU & 🪙 BTC - Special Section")
+xau_status = currency_status.get("XAU", "NEUTRAL")
+btc_status = currency_status.get("BTC", "NEUTRAL")
+
+col1, col2 = st.columns(2)
+with col1:
+    st.markdown(f"### XAU-{xau_status}")
+    for pair in PAIRS["XAU"]:
         if pair in changes:
-            change = changes[pair]
-            base = "XAU"
-            quote = pair[3:]
-            signal, color = get_signal(pair, base, quote)
-            st.markdown(f"**{pair}**")
-            st.markdown(f"<span style='color:{color};font-weight:bold'>{signal}</span>", unsafe_allow_html=True)
-            st.caption(f"Δ {change:.2f}%")
-        else:
-            st.markdown(f"**{pair}**")
-            st.caption("N/A")
+            pips = changes[pair]
+            color = "gold" if pips > 5 else "orange" if pips < -5 else "gray"
+            st.markdown(f"<span style='color:{color};font-weight:bold'>{pair} {pips:.0f}</span>", unsafe_allow_html=True)
+with col2:
+    st.markdown(f"### BTC-{btc_status}")
+    for pair in PAIRS["BTC"]:
+        if pair in changes:
+            pips = changes[pair]
+            color = "#f7931a" if pips > 5 else "#ff6b6b" if pips < -5 else "gray"
+            st.markdown(f"<span style='color:{color};font-weight:bold'>{pair} {pips:.0f}</span>", unsafe_allow_html=True)
+
 st.divider()
 
-# --- BTC Section ---
-st.header("🪙 BTC - Special Section")
-st.subheader(f"{'🟢' if currency_status.get('BTC','NEUTRAL')=='STRONG' else '🔴' if currency_status.get('BTC','NEUTRAL')=='WEAK' else '⚪'} BTC - {currency_status.get('BTC','NEUTRAL')}")
-btc_pairs = PAIRS["BTC"]
-cols = st.columns(4)
-for idx, pair in enumerate(btc_pairs):
-    with cols[idx % 4]:
-        if pair in changes:
-            change = changes[pair]
-            base = "BTC"
-            quote = pair[3:]
-            signal, color = get_signal(pair, base, quote)
-            st.markdown(f"**{pair}**")
-            st.markdown(f"<span style='color:{color};font-weight:bold'>{signal}</span>", unsafe_allow_html=True)
-            st.caption(f"Δ {change:.2f}%")
-        else:
-            st.markdown(f"**{pair}**")
-            st.caption("N/A")
-st.divider()
+# --- Daily Currency Strength Meter ---
+st.subheader("📊 Daily Currency Strength Meter")
+
+# Ambil nilai strength untuk semua currency (kecuali XAU & BTC)
+strength_values = {curr: currency_strength[curr] for curr in currency_strength if curr not in ["XAU", "BTC"]}
+sorted_strength = sorted(strength_values.items(), key=lambda x: x[1], reverse=True)
+
+currencies = [c[0] for c in sorted_strength]
+values = [c[1] for c in sorted_strength]
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=values,
+    y=currencies,
+    orientation='h',
+    marker_color=['#2ecc71' if v > 0 else '#e74c3c' if v < 0 else '#95a5a6' for v in values],
+    text=[f"{v:.2f}" for v in values],
+    textposition='outside'
+))
+fig.update_layout(
+    height=300,
+    margin=dict(l=10, r=10, t=20, b=10),
+    xaxis_title="Strength Score",
+    yaxis_title="Currency"
+)
+st.plotly_chart(fig, use_container_width=True)
 
 # --- Footer ---
+st.divider()
 st.caption(f"🔄 Update: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
-st.caption("📌 Sumber: MetaTrader via MetaApi Cloud")
-st.caption("🟢 BUY | 🔴 SELL | ⚪ HOLD")
+st.caption("📌 Sumber: MetaTrader via MetaApi Cloud (simbol + 'm')")
+st.caption("🟢 Positif = Strong | 🔴 Negatif = Weak")
