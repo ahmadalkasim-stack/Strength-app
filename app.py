@@ -32,31 +32,25 @@ PAIRS_CONFIG = {
     "BTC": ["BTCUSD", "BTCJPY", "BTCGBP", "BTCEUR", "BTCAUD", "BTCNZD", "BTCCAD", "BTCCHF"]
 }
 
-# --- Fungsi Simulasi Realistis dengan Distribusi Normal ---
+# --- Fungsi Simulasi Realistis (pasti ada yang positif & negatif) ---
 def generate_smart_simulation():
-    """Menghasilkan data dengan beberapa strong dan weak secara alami."""
+    """Menghasilkan data yang masuk akal: ada yang strong dan weak."""
     np.random.seed(int(datetime.now().timestamp()) % 10000)
     base = {
-        # JPY pairs (cenderung positif agar JPY strong)
-        "AUDJPY": np.random.normal(1100, 100), "GBPJPY": np.random.normal(900, 80),
-        "EURJPY": np.random.normal(900, 80), "NZDJPY": np.random.normal(600, 60),
-        "CADJPY": np.random.normal(600, 60), "USDJPY": np.random.normal(450, 40),
-        "CHFJPY": np.random.normal(300, 30),
-        # CHF pairs (cenderung positif)
-        "AUDCHF": np.random.normal(450, 50), "EURCHF": np.random.normal(300, 30),
-        "GBPCHF": np.random.normal(280, 30), "NZDCHF": np.random.normal(250, 30),
-        "CADCHF": np.random.normal(200, 20), "USDCHF": np.random.normal(80, 10),
-        # EUR pairs (cenderung negatif agar EUR weak)
-        "EURAUD": np.random.normal(-900, 100), "EURCAD": np.random.normal(-50, 20),
-        "EURGBP": np.random.normal(-40, 10), "EURUSD": np.random.normal(-300, 40),
-        "EURCHF": np.random.normal(-300, 40), "EURJPY": np.random.normal(-900, 80),
-        # USD pairs (netral)
-        "AUDUSD": np.random.normal(300, 50), "USDCAD": np.random.normal(-300, 50),
-        "GBPUSD": np.random.normal(200, 40), "NZDUSD": np.random.normal(-150, 30),
-        "GBPAUD": np.random.normal(800, 80), "GBPNZD": np.random.normal(300, 40),
-        "GBPCAD": np.random.normal(100, 20), "AUDCAD": np.random.normal(-300, 40),
-        "NZDCAD": np.random.normal(-50, 20), "EURNZD": np.random.normal(-200, 30),
-        # XAU & BTC (strong)
+        # EUR pair: positif (karena EUR strong) → EUR strong = hijau
+        "EURAUD": np.random.normal(900, 100), "EURCAD": np.random.normal(50, 20),
+        "EURGBP": np.random.normal(40, 10), "EURUSD": np.random.normal(300, 40),
+        "EURCHF": np.random.normal(300, 40), "EURJPY": np.random.normal(900, 80),
+        # GBP pair: negatif (karena GBP weak) → GBP weak = merah
+        "GBPAUD": np.random.normal(-800, 80), "GBPNZD": np.random.normal(-300, 40),
+        "EURGBP": np.random.normal(40, 10),  # EUR strong vs GBP weak → positif
+        "GBPUSD": np.random.normal(-200, 40), "GBPCHF": np.random.normal(-280, 30),
+        "GBPJPY": np.random.normal(-900, 80),
+        # JPY: tergantung arah
+        "AUDJPY": np.random.normal(1100, 100), "USDJPY": np.random.normal(450, 40),
+        "CHFJPY": np.random.normal(300, 30), "NZDJPY": np.random.normal(600, 60),
+        "CADJPY": np.random.normal(600, 60),
+        # XAU & BTC: positif
         "XAUUSD": np.random.normal(10000, 500), "XAUJPY": np.random.normal(1500, 100),
         "BTCUSD": np.random.normal(1200, 100)
     }
@@ -131,54 +125,34 @@ with st.spinner("⏳ Mengambil data..."):
         st.sidebar.error("❌ Gagal, pakai simulasi")
         changes = generate_smart_simulation()
 
-# --- Hitung Strength dengan Ranking ---
+# --- Hitung Strength dengan logika yang benar ---
 currency_strength = {}
 for curr, plist in PAIRS_CONFIG.items():
     total, cnt = 0, 0
     for p in plist:
         if p in changes:
-            if p.startswith("XAU") or p.startswith("BTC"):
+            # Jika mata uang adalah base (posisi pertama)
+            if p.startswith(curr):
                 total += changes[p]
                 cnt += 1
-            else:
-                if curr in p[3:] or curr in p.split("/")[-1]:
-                    total -= changes[p]
-                else:
-                    total += changes[p]
+            # Jika mata uang adalah quote (posisi kedua)
+            elif p.endswith(curr) or curr in p[3:]:
+                total -= changes[p]  # balik tandanya
                 cnt += 1
     currency_strength[curr] = total / cnt if cnt > 0 else 0
 
-# Ranking untuk menentukan Strong/Weak (top 3 strong, bottom 3 weak)
-currencies = [c for c in currency_strength if c not in ["XAU", "BTC"]]
-if currencies:
-    sorted_vals = sorted(currencies, key=lambda x: currency_strength[x], reverse=True)
-    strong_count = max(2, len(sorted_vals) // 3)
-    weak_count = max(2, len(sorted_vals) // 3)
-    strong_set = set(sorted_vals[:strong_count])
-    weak_set = set(sorted_vals[-weak_count:])
-else:
-    strong_set, weak_set = set(), set()
-
+# --- Tentukan status berdasarkan tanda (bukan ranking) ---
+threshold = 20.0
 currency_status = {}
-for curr in currency_strength:
-    if curr in ["XAU", "BTC"]:
-        continue
-    if curr in strong_set:
+for curr, val in currency_strength.items():
+    if val > threshold:
         currency_status[curr] = "STRONG"
-    elif curr in weak_set:
+    elif val < -threshold:
         currency_status[curr] = "WEAK"
     else:
         currency_status[curr] = "NEUTRAL"
 
-# Status untuk XAU & BTC
-for special in ["XAU", "BTC"]:
-    if special in currency_strength:
-        if currency_strength[special] > 0:
-            currency_status[special] = "STRONG"
-        else:
-            currency_status[special] = "WEAK"
-
-# --- Tampilan 3 Kolom (lebih compact) ---
+# --- Tampilan 3 Kolom ---
 st.subheader(f"📊 Currency Dominance IA - {selected_tf}")
 
 # Urutan: Strong, Weak, Neutral
@@ -188,7 +162,7 @@ for status in ["STRONG", "WEAK", "NEUTRAL"]:
         if s == status and curr not in ["XAU", "BTC"]:
             ordered.append(curr)
 
-cols = st.columns(3)  # 3 kolom agar lebih padat
+cols = st.columns(3)
 col_idx = 0
 
 for currency in ordered:
@@ -202,17 +176,17 @@ for currency in ordered:
             if pair in changes:
                 pips = changes[pair]
                 total_pips += abs(pips)
-                # Gradasi warna: hijau terang jika positif besar, merah jika negatif besar
-                if pips > 50:
+                # WARNA: jika positif → hijau, negatif → merah
+                if pips > 20:
                     color = "#00cc44"
                     arrow = "▲▲"
-                elif pips > 10:
+                elif pips > 5:
                     color = "#88dd88"
                     arrow = "▲"
-                elif pips < -50:
+                elif pips < -20:
                     color = "#ff3333"
                     arrow = "▼▼"
-                elif pips < -10:
+                elif pips < -5:
                     color = "#ff8888"
                     arrow = "▼"
                 else:
@@ -223,7 +197,7 @@ for currency in ordered:
         st.divider()
     col_idx += 1
 
-# --- XAU & BTC (2 kolom sejajar) ---
+# --- XAU & BTC ---
 st.subheader("🟡 XAU & 🪙 BTC - Special Section")
 c1, c2 = st.columns(2)
 with c1:
@@ -247,7 +221,7 @@ with c2:
 
 st.divider()
 
-# --- Daily Currency Strength Meter (lebih kecil) ---
+# --- Daily Currency Strength Meter ---
 st.subheader("📊 Daily Currency Strength Meter")
 sv = {c: currency_strength[c] for c in currency_strength if c not in ["XAU", "BTC"]}
 max_abs = max(abs(v) for v in sv.values()) if sv else 1
@@ -266,4 +240,4 @@ fig.update_layout(height=200, margin=dict(l=10,r=10,t=10,b=10), xaxis_title="Str
 st.plotly_chart(fig, use_container_width=True)
 
 st.caption(f"🔄 Update: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
-st.caption("🟢 ▲ = Naik | 🔴 ▼ = Turun | 🟡 XAU | 🪙 BTC")
+st.caption("🟢 ▲ = Naik (BUY) | 🔴 ▼ = Turun (SELL) | 🟡 XAU | 🪙 BTC")
