@@ -194,7 +194,6 @@ def tampilkan_currency(currency, col):
         st.markdown(f"### {label}")
         st.caption(f"{selected_tf}")
         total_pips = 0
-        # Tentukan warna dasar untuk semua pair di grup ini
         base_color = "#00cc44" if status == "STRONG" else "#ff3333"
         for pair in plist:
             if pair in changes:
@@ -209,33 +208,27 @@ def tampilkan_currency(currency, col):
         st.caption(f"Total: {total_pips:.0f}")
         st.divider()
 
-# --- Tampilan: Susunan Baris ---
+# --- LAYOUT BARU: 4 Pair per Baris ---
 st.subheader(f"📊 Currency Dominance IA - {selected_tf}")
 
-# Baris 1: XAU | BTC
+# Baris 1: XAU & BTC
 col1, col2 = st.columns(2)
 tampilkan_currency("XAU", col1)
 tampilkan_currency("BTC", col2)
 
-# Baris 2: JPY | USD
-col1, col2 = st.columns(2)
+# Baris 2: JPY, USD, EUR, GBP
+col1, col2, col3, col4 = st.columns(4)
 tampilkan_currency("JPY", col1)
 tampilkan_currency("USD", col2)
+tampilkan_currency("EUR", col3)
+tampilkan_currency("GBP", col4)
 
-# Baris 3: EUR | GBP
-col1, col2 = st.columns(2)
-tampilkan_currency("EUR", col1)
-tampilkan_currency("GBP", col2)
-
-# Baris 4: AUD | NZD
-col1, col2 = st.columns(2)
+# Baris 3: AUD, NZD, CAD, CHF
+col1, col2, col3, col4 = st.columns(4)
 tampilkan_currency("AUD", col1)
 tampilkan_currency("NZD", col2)
-
-# Baris 5: CAD | CHF
-col1, col2 = st.columns(2)
-tampilkan_currency("CAD", col1)
-tampilkan_currency("CHF", col2)
+tampilkan_currency("CAD", col3)
+tampilkan_currency("CHF", col4)
 
 # --- Daily Currency Strength Meter ---
 st.subheader("📊 Daily Currency Strength Meter")
