@@ -18,7 +18,7 @@ try:
 except:
     st.sidebar.error("❌ Secrets tidak ditemukan!")
 
-# --- Konfigurasi Pair (Sesuai gambar + XAU & BTC) ---
+# --- Konfigurasi Pair ---
 PAIRS_CONFIG = {
     "JPY": ["GBPJPY", "AUDJPY", "EURJPY", "CADJPY", "NZDJPY", "USDJPY", "CHFJPY"],
     "CHF": ["AUDCHF", "GBPCHF", "EURCHF", "NZDCHF", "CADCHF", "USDCHF", "CHFJPY"],
@@ -32,7 +32,7 @@ PAIRS_CONFIG = {
     "BTC": ["BTCUSD", "BTCJPY", "BTCGBP", "BTCEUR", "BTCAUD", "BTCNZD", "BTCCAD", "BTCCHF"]
 }
 
-# --- Fungsi Simulasi (Semua pair termasuk XAU & BTC) ---
+# --- Fungsi Simulasi ---
 def generate_realistic_data():
     np.random.seed(int(datetime.now().timestamp()) % 10000)
     data = {}
@@ -71,7 +71,7 @@ def generate_realistic_data():
     data["NZDCAD"] = int(np.random.normal(38, 5))
     # NZD
     data["AUDNZD"] = int(np.random.normal(229, 15))
-    # XAU (semua pair)
+    # XAU
     data["XAUUSD"] = int(np.random.normal(10000, 500))
     data["XAUJPY"] = int(np.random.normal(1500, 100))
     data["XAUGBP"] = int(np.random.normal(8000, 400))
@@ -80,7 +80,7 @@ def generate_realistic_data():
     data["XAUNZD"] = int(np.random.normal(6500, 300))
     data["XAUCAD"] = int(np.random.normal(7500, 400))
     data["XAUCHF"] = int(np.random.normal(8500, 400))
-    # BTC (semua pair)
+    # BTC
     data["BTCUSD"] = int(np.random.normal(1200, 100))
     data["BTCJPY"] = int(np.random.normal(180, 15))
     data["BTCGBP"] = int(np.random.normal(950, 80))
@@ -89,7 +89,6 @@ def generate_realistic_data():
     data["BTCNZD"] = int(np.random.normal(1700, 140))
     data["BTCCAD"] = int(np.random.normal(1500, 120))
     data["BTCCHF"] = int(np.random.normal(1300, 110))
-    # Tambahkan noise
     for k in data:
         data[k] += int(np.random.normal(0, 10))
     return data
@@ -134,7 +133,7 @@ async def get_real_data(pairs, tf):
 # --- Sidebar ---
 st.sidebar.header("⚙️ Pengaturan")
 tf_map = {"W1": "1w", "D1": "1d", "H4": "4h", "H1": "1h", "M15": "15m"}
-selected_tf = st.sidebar.selectbox("Pilih Timeframe", list(tf_map.keys()), index=1)
+selected_tf = st.sidebar.selectbox("Pilih Timeframe", list(tf_map.keys()), index=3)
 tf_value = tf_map[selected_tf]
 
 refresh = st.sidebar.button("🔄 Refresh Data")
@@ -160,7 +159,7 @@ with st.spinner(f"⏳ Mengambil data {selected_tf}..."):
         st.sidebar.error("❌ Gagal, pakai simulasi")
         changes = generate_realistic_data()
 
-# --- Hitung Strength per Currency ---
+# --- Hitung Strength ---
 currency_strength = {}
 for curr, plist in PAIRS_CONFIG.items():
     total, cnt = 0, 0
@@ -174,7 +173,7 @@ for curr, plist in PAIRS_CONFIG.items():
                 cnt += 1
     currency_strength[curr] = total / cnt if cnt > 0 else 0
 
-# --- Tentukan status STRONG/WEAK (berdasarkan median) ---
+# --- Tentukan status STRONG/WEAK ---
 values = [currency_strength[c] for c in PAIRS_CONFIG.keys() if c not in ["XAU", "BTC"]]
 median = np.median(values) if values else 0
 strong_set = set()
@@ -187,12 +186,9 @@ for curr in PAIRS_CONFIG.keys():
     else:
         weak_set.add(curr)
 
-# --- Tampilan: XAU & BTC di ATAS ---
+# --- XAU & BTC di ATAS ---
 st.subheader("🟡 XAU & 🪙 BTC - Special Section")
-
-# Tampilkan XAU & BTC dalam 2 kolom
 col_xau, col_btc = st.columns(2)
-
 with col_xau:
     st.markdown("### XAU-STRONG")
     st.caption(f"{selected_tf}")
@@ -202,7 +198,6 @@ with col_xau:
             color = "#FFD700" if pips > 20 else "#FF8C00" if pips < -20 else "#888"
             arrow = "▲" if pips > 20 else "▼" if pips < -20 else "•"
             st.markdown(f"<span style='color:{color};font-weight:bold;font-size:14px'>{arrow} {p} {pips:.0f}</span>", unsafe_allow_html=True)
-
 with col_btc:
     st.markdown("### BTC-STRONG")
     st.caption(f"{selected_tf}")
@@ -212,20 +207,15 @@ with col_btc:
             color = "#f7931a" if pips > 20 else "#ff6b6b" if pips < -20 else "#888"
             arrow = "▲" if pips > 20 else "▼" if pips < -20 else "•"
             st.markdown(f"<span style='color:{color};font-weight:bold;font-size:14px'>{arrow} {p} {pips:.0f}</span>", unsafe_allow_html=True)
-
 st.divider()
 
-# --- Tampilan: Currency Fiat (Strong di kiri, Weak di kanan) ---
+# --- Currency Fiat ---
 st.subheader(f"📊 Currency Dominance IA - {selected_tf}")
-
-# Urutkan currency berdasarkan strength (dari tertinggi ke terendah)
 sorted_curr = sorted([c for c in currency_strength if c not in ["XAU", "BTC"]], key=lambda x: currency_strength[x], reverse=True)
 strong_list = [c for c in sorted_curr if c in strong_set]
 weak_list = [c for c in sorted_curr if c in weak_set]
-
 cols = st.columns(2)
 
-# Kolom kiri: Strong
 with cols[0]:
     for currency in strong_list:
         label = f"{currency}-STRONG"
@@ -237,12 +227,11 @@ with cols[0]:
             if pair in changes:
                 pips = changes[pair]
                 total_pips += abs(pips)
-                # STRONG = HIJAU (semua pair di grup strong warnanya hijau)
                 if pips > 20:
                     color = "#00cc44"
                     arrow = "▲"
                 elif pips < -20:
-                    color = "#00cc44"  # tetap hijau karena strong
+                    color = "#00cc44"
                     arrow = "▼"
                 else:
                     color = "#88dd88"
@@ -251,7 +240,6 @@ with cols[0]:
         st.caption(f"Total: {total_pips:.0f}")
         st.divider()
 
-# Kolom kanan: Weak
 with cols[1]:
     for currency in weak_list:
         label = f"{currency}-WEAK"
@@ -263,12 +251,11 @@ with cols[1]:
             if pair in changes:
                 pips = changes[pair]
                 total_pips += abs(pips)
-                # WEAK = MERAH (semua pair di grup weak warnanya merah)
                 if pips > 20:
-                    color = "#ff3333"  # merah karena weak
+                    color = "#ff3333"
                     arrow = "▲"
                 elif pips < -20:
-                    color = "#ff3333"  # tetap merah karena weak
+                    color = "#ff3333"
                     arrow = "▼"
                 else:
                     color = "#ff8888"
@@ -279,7 +266,6 @@ with cols[1]:
 
 # --- Daily Currency Strength Meter ---
 st.subheader("📊 Daily Currency Strength Meter")
-# Normalisasi ke skala 0-10 (seperti gambar)
 max_val = max(abs(v) for v in currency_strength.values() if v != 0) if currency_strength else 1
 normalized = {c: (currency_strength[c] / max_val) * 10 for c in sorted_curr}
 sorted_norm = sorted(normalized.items(), key=lambda x: x[1], reverse=True)
@@ -295,6 +281,5 @@ fig.add_trace(go.Bar(
 fig.update_layout(height=250, margin=dict(l=10,r=10,t=10,b=10), xaxis_title="Strength Score")
 st.plotly_chart(fig, use_container_width=True)
 
-# --- Footer ---
 st.caption(f"🔄 Update: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
 st.caption("🟢 ▲ = Naik | 🔴 ▼ = Turun | 🟡 XAU | 🪙 BTC")
