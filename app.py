@@ -4,12 +4,11 @@ import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime
 import time
-import random
 
 st.set_page_config(layout="wide", page_title="G4 LFX - Currency Dominance")
-st.title("💰 G4 LFX - Currency Dominance IA (Real-time Simulasi)")
+st.title("💰 G4 LFX - Currency Dominance IA")
 
-st.sidebar.info("📊 Mode Simulasi - Data bergerak setiap refresh")
+st.sidebar.info("📊 Mode Simulasi Stabil - Data bergerak halus")
 
 # --- PAIRS ---
 PAIRS = {
@@ -23,14 +22,15 @@ PAIRS = {
     "AUD": ["AUDNZD", "AUDCAD", "AUDCHF", "AUDUSD", "EURAUD", "AUDJPY", "GBPAUD"]
 }
 
-# --- Generate data simulasi yang bergerak ---
-def generate_data():
-    np.random.seed(int(datetime.now().timestamp()) % 10000)
+# --- Generate data simulasi stabil (bergerak halus) ---
+def generate_stable_data():
+    # Gunakan seed berdasarkan waktu agar berubah setiap refresh
+    np.random.seed(int(datetime.now().timestamp() / 2) % 10000)
     data = {}
     for plist in PAIRS.values():
         for p in plist:
-            # Simulasi pergerakan dengan normal
-            data[p] = np.random.normal(0, 50)
+            # Pergerakan kecil antara -10 sampai +10
+            data[p] = np.random.normal(0, 15)
     return data
 
 # --- Normalisasi 0-100 ---
@@ -60,10 +60,10 @@ if st.sidebar.button("🔄 Refresh Sekarang"):
 
 st.sidebar.caption("🟢 ▲ = Naik | 🔴 ▼ = Turun")
 st.sidebar.caption(f"⏱️ Update: {datetime.now().strftime('%H:%M:%S')}")
-st.sidebar.success("✅ Data simulasi berjalan")
+st.sidebar.success("✅ Data simulasi stabil berjalan")
 
 # --- Ambil Data Simulasi ---
-changes = generate_data()
+changes = generate_stable_data()
 
 # --- Hitung Strength ---
 currency_strength_raw = {}
@@ -144,3 +144,4 @@ if refresh_interval != "Off":
 
 st.caption(f"🔄 Update: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
 st.caption("🟢 ▲ Naik | 🔴 ▼ Turun | Skor 0-100")
+st.caption("📌 Mode Simulasi - Data bergerak halus")
