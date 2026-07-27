@@ -6,6 +6,7 @@ from datetime import datetime
 import numpy as np
 import plotly.graph_objects as go
 import time
+import random
 
 st.set_page_config(layout="wide", page_title="G4 LFX - Real-time")
 st.title("💰 G4 LFX - Currency Dominance IA (Real-time)")
@@ -16,7 +17,7 @@ try:
     ACCOUNT_ID = st.secrets["METAAPI_ACCOUNT_ID"]
     st.sidebar.success("✅ MetaApi Connected")
 except:
-    st.sidebar.error("❌ Secrets tidak ditemukan! Periksa konfigurasi.")
+    st.sidebar.error("❌ Secrets tidak ditemukan!")
     st.stop()
 
 # --- SEMUA PAIR PAKAI AKHIRAN "m" ---
@@ -66,16 +67,40 @@ async def get_all_rates(pairs, tf):
     results = await asyncio.gather(*tasks)
     return dict(results)
 
+# --- Fungsi Simulasi Stabil (tidak loncat-loncat) ---
+def generate_stable_fallback():
+    """Menghasilkan data simulasi yang stabil berdasarkan harga awal."""
+    base = {
+        "GBPJPYm": 1057, "AUDJPYm": 973, "EURJPYm": 964, "CADJPYm": 602,
+        "NZDJPYm": 550, "USDJPYm": 515, "CHFJPYm": 420,
+        "AUDCHFm": 350, "GBPCHFm": 286, "EURCHFm": 266, "NZDCHFm": 188,
+        "CADCHFm": 161, "USDCHFm": 55,
+        "AUDUSDm": 369, "USDCADm": 348, "EURUSDm": 282, "GBPUSDm": 261,
+        "NZDUSDm": 150, "GBPAUDm": 870, "GBPNZDm": 327, "GBPCADm": 105,
+        "EURAUDm": 630, "EURNZDm": 230, "EURCADm": 1, "EURGBPm": 2,
+        "AUDCADm": 321, "NZDCADm": 38, "AUDNZDm": 229,
+        "XAUUSDm": 4100, "XAUJPYm": 1500, "XAUGBPm": 8000,
+        "XAUEURm": 9000, "XAUAUDm": 7000, "XAUNZDm": 6500,
+        "XAUCADm": 7500, "XAUCHFm": 8500,
+        "BTCUSDm": 1200, "BTCJPYm": 180, "BTCGBPm": 950,
+        "BTCEURm": 1100, "BTCAUDm": 1600, "BTCNZDm": 1700,
+        "BTCCADm": 1500, "BTCCHFm": 1300
+    }
+    # Tambahkan noise kecil agar tidak semua 0
+    for k in base:
+        base[k] += random.randint(-20, 20)
+    return base
+
 # --- Sidebar ---
 st.sidebar.header("⚙️ Pengaturan")
 tf_map = {"W1": "1w", "D1": "1d", "H4": "4h", "H1": "1h", "M15": "15m"}
 selected_tf = st.sidebar.selectbox("Pilih Timeframe", list(tf_map.keys()), index=3)
 tf_value = tf_map[selected_tf]
 
-# Pilihan interval refresh
-interval = st.sidebar.selectbox("⏱️ Refresh Interval", ["1 detik", "2 detik", "5 detik", "10 detik"], index=2)
+refresh_interval = st.sidebar.selectbox("⏱️ Refresh Interval", ["Off", "1 detik", "2 detik", "5 detik", "10 detik"], index=2)
 if st.sidebar.button("🔄 Refresh Sekarang"):
     st.rerun()
+
 st.sidebar.caption("🟢 ▲ = Naik | 🔴 ▼ = Turun")
 st.sidebar.caption(f"⏱️ Update: {datetime.now().strftime('%H:%M:%S')}")
 
@@ -92,7 +117,8 @@ real_count = len([v for v in changes.values() if abs(v) > 0.1])
 if real_count > 0:
     st.sidebar.success(f"✅ Real: {real_count} pair")
 else:
-    st.sidebar.warning("⚠️ Data real 0 — cek simbol di MT5")
+    st.sidebar.warning("⚠️ Data real 0 — gunakan simulasi stabil")
+    changes = generate_stable_fallback()
 
 # --- Hitung Strength ---
 currency_strength = {}
@@ -154,9 +180,14 @@ tampil("AUD", c1); tampil("NZD", c2); tampil("CAD", c3); tampil("CHF", c4)
 st.subheader("📊 Daily Currency Strength Meter")
 sorted_curr = [c for c in PAIRS.keys() if c not in ["XAU", "BTC"]]
 sorted_curr = sorted(sorted_curr, key=lambda x: currency_strength[x], reverse=True)
-max_val = max(abs(v) for v in currency_strength.values() if v != 0)
-if max_val == 0:
+
+# CEGAH ERROR max_val = 0
+valid_values = [currency_strength[c] for c in sorted_curr if currency_strength[c] != 0]
+if valid_values:
+    max_val = max(abs(v) for v in valid_values)
+else:
     max_val = 1
+
 norm = {c: (currency_strength[c] / max_val) * 10 for c in sorted_curr}
 
 fig = go.Figure()
@@ -168,10 +199,11 @@ fig.add_trace(go.Bar(
 fig.update_layout(height=250, margin=dict(l=10,r=10,t=10,b=10), xaxis_title="Strength Score")
 st.plotly_chart(fig, use_container_width=True)
 
-# --- Auto-refresh dengan interval yang dipilih ---
-interval_sec = {"1 detik": 1, "2 detik": 2, "5 detik": 5, "10 detik": 10}.get(interval, 5)
-time.sleep(interval_sec)
-st.rerun()
+# --- Auto-refresh ---
+if refresh_interval != "Off":
+    interval = {"1 detik": 1, "2 detik": 2, "5 detik": 5, "10 detik": 10}.get(refresh_interval, 5)
+    time.sleep(interval)
+    st.rerun()
 
 st.caption(f"🔄 Update: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
 st.caption("🟢 ▲ Naik | 🔴 ▼ Turun | 🟡 XAU | 🪙 BTC")
