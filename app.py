@@ -31,7 +31,7 @@ PAIRS = {
     "AUD": ["AUDNZD", "AUDCAD", "AUDCHF", "AUDUSD", "EURAUD", "AUDJPY", "GBPAUD"]
 }
 
-# --- Fungsi Async (Cepat) ---
+# --- Fungsi Async dengan Timeout ---
 def run_async(coro):
     try:
         loop = asyncio.get_running_loop()
@@ -40,11 +40,12 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
-async def get_rate(symbol, tf):
+async def get_rate_with_timeout(symbol, tf, timeout=5):
     try:
         api = MetaApi(token=TOKEN)
         account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
-        rates = await account.get_rates(symbol, tf, 2)
+        # Gunakan timeout untuk menghindari loading selamanya
+        rates = await asyncio.wait_for(account.get_rates(symbol, tf, 2), timeout=timeout)
         if rates and len(rates) >= 2:
             cp = rates[0]['close']
             cn = rates[-1]['close']
@@ -53,27 +54,28 @@ async def get_rate(symbol, tf):
             mult = 100 if 'JPY' in symbol else 10000
             return (cn - cp) * mult
         return None
+    except asyncio.TimeoutError:
+        return None
     except:
         return None
 
 async def fetch_all(pairs, tf):
-    """Coba 3 suffix: kosong, lfx, m"""
-    suffixes = ["", "lfx", "m"]
     changes = {}
-    found_symbols = {}
+    found = {}
+    suffixes = ["", "lfx", "m"]
     
     for base in pairs:
         for suffix in suffixes:
             symbol = base + suffix
-            change = await get_rate(symbol, tf)
+            change = await get_rate_with_timeout(symbol, tf, timeout=4)
             if change is not None:
                 changes[base] = change
-                found_symbols[base] = symbol
+                found[base] = symbol
                 break
         if base not in changes:
             changes[base] = 0.0
     
-    return changes, found_symbols
+    return changes, found
 
 # --- Sidebar ---
 st.sidebar.header("⚙️ Pengaturan")
@@ -81,7 +83,9 @@ tf_map = {"W1": "1w", "D1": "1d", "H4": "4h", "H1": "1h", "M15": "15m"}
 selected_tf = st.sidebar.selectbox("Pilih Timeframe", list(tf_map.keys()), index=3)
 tf_value = tf_map[selected_tf]
 
+use_simulasi = st.sidebar.checkbox("📊 Gunakan Simulasi (Jika Real Lambat)", value=True)
 refresh_interval = st.sidebar.selectbox("⏱️ Refresh Interval", ["Off", "2 detik", "5 detik", "10 detik"], index=1)
+
 if st.sidebar.button("🔄 Refresh Sekarang"):
     st.rerun()
 
@@ -93,31 +97,31 @@ all_pairs = []
 for pl in PAIRS.values():
     all_pairs.extend(pl)
 
-with st.spinner(f"⏳ Mengambil data real-time {selected_tf}..."):
+with st.spinner(f"⏳ Mengambil data {selected_tf} (timeout 4 detik)..."):
     changes, found_symbols = run_async(fetch_all(all_pairs, tf_value))
 
-# Tampilkan simbol yang ditemukan di sidebar
+# Tampilkan simbol yang ditemukan
 if found_symbols:
     st.sidebar.success(f"✅ {len(found_symbols)} simbol ditemukan")
-    # Tampilkan 3 contoh
-    example = list(found_symbols.items())[:3]
-    st.sidebar.info(f"Contoh: {example}")
 else:
-    st.sidebar.warning("⚠️ Tidak ada simbol ditemukan. Coba suffix lain.")
+    st.sidebar.warning("⚠️ Tidak ada simbol ditemukan")
 
 # Cek real data
 real_count = len([v for v in changes.values() if abs(v) > 0.1])
 if real_count > 0:
     st.sidebar.success(f"✅ Real: {real_count} pair")
 else:
-    st.sidebar.warning("⚠️ Data real 0 — gunakan simulasi")
-    # Fallback simulasi stabil
-    np.random.seed(int(datetime.now().timestamp()) % 10000)
-    for p in all_pairs:
-        if p not in changes or changes[p] == 0:
-            changes[p] = np.random.normal(0, 50)
+    if use_simulasi:
+        st.sidebar.info("📊 Menggunakan data simulasi (real lambat/tidak ditemukan)")
+        # Simulasi stabil
+        np.random.seed(int(datetime.now().timestamp()) % 10000)
+        for p in all_pairs:
+            if p not in changes or changes[p] == 0:
+                changes[p] = np.random.normal(0, 50)
+    else:
+        st.sidebar.warning("⚠️ Real 0 dan simulasi dimatikan")
 
-# --- Hitung Strength ---
+# --- Normalisasi 0-100 ---
 currency_strength_raw = {}
 for curr, plist in PAIRS.items():
     total, cnt = 0, 0
