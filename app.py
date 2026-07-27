@@ -31,7 +31,7 @@ PAIRS = {
     "AUD": ["AUDNZD", "AUDCAD", "AUDCHF", "AUDUSD", "EURAUD", "AUDJPY", "GBPAUD"]
 }
 
-# --- Fungsi Async ---
+# --- Fungsi Async (Cepat) ---
 def run_async(coro):
     try:
         loop = asyncio.get_running_loop()
@@ -56,43 +56,30 @@ async def get_rate(symbol, tf):
     except:
         return None
 
-async def fetch_all(pairs, tf, suffix):
+async def fetch_all(pairs, tf):
+    """Coba 3 suffix: kosong, lfx, m"""
+    suffixes = ["", "lfx", "m"]
     changes = {}
-    progress = 0
+    found_symbols = {}
+    
     for base in pairs:
-        symbol = base + suffix
-        change = await get_rate(symbol, tf)
-        changes[base] = change if change is not None else 0.0
-        progress += 1
-    return changes
-
-# --- Normalisasi ---
-def normalize_to_100(data_dict):
-    valid_vals = [v for v in data_dict.values() if v is not None and not np.isnan(v) and v != 0]
-    if not valid_vals:
-        return {k: 50.0 for k in data_dict.keys()}
-    min_val = min(valid_vals)
-    max_val = max(valid_vals)
-    if max_val == min_val:
-        return {k: 50.0 for k in data_dict.keys()}
-    result = {}
-    for k, v in data_dict.items():
-        if v is None or np.isnan(v):
-            result[k] = 50.0
-        else:
-            result[k] = ((v - min_val) / (max_val - min_val)) * 100
-    return result
+        for suffix in suffixes:
+            symbol = base + suffix
+            change = await get_rate(symbol, tf)
+            if change is not None:
+                changes[base] = change
+                found_symbols[base] = symbol
+                break
+        if base not in changes:
+            changes[base] = 0.0
+    
+    return changes, found_symbols
 
 # --- Sidebar ---
 st.sidebar.header("⚙️ Pengaturan")
 tf_map = {"W1": "1w", "D1": "1d", "H4": "4h", "H1": "1h", "M15": "15m"}
 selected_tf = st.sidebar.selectbox("Pilih Timeframe", list(tf_map.keys()), index=3)
 tf_value = tf_map[selected_tf]
-
-# Pilih suffix secara manual
-suffix_options = ["", "m", ".m", "lfx", ".lfx", "pro", "c", "ecn", "stp", "real", "demo"]
-selected_suffix = st.sidebar.selectbox("Akhiran Simbol", suffix_options, index=0)
-st.sidebar.info(f"Simbol akan dicoba: XAUUSD{selected_suffix}")
 
 refresh_interval = st.sidebar.selectbox("⏱️ Refresh Interval", ["Off", "2 detik", "5 detik", "10 detik"], index=1)
 if st.sidebar.button("🔄 Refresh Sekarang"):
@@ -106,16 +93,25 @@ all_pairs = []
 for pl in PAIRS.values():
     all_pairs.extend(pl)
 
-with st.spinner(f"⏳ Mengambil data {selected_tf} dengan suffix '{selected_suffix}'..."):
-    changes = run_async(fetch_all(all_pairs, tf_value, selected_suffix))
+with st.spinner(f"⏳ Mengambil data real-time {selected_tf}..."):
+    changes, found_symbols = run_async(fetch_all(all_pairs, tf_value))
+
+# Tampilkan simbol yang ditemukan di sidebar
+if found_symbols:
+    st.sidebar.success(f"✅ {len(found_symbols)} simbol ditemukan")
+    # Tampilkan 3 contoh
+    example = list(found_symbols.items())[:3]
+    st.sidebar.info(f"Contoh: {example}")
+else:
+    st.sidebar.warning("⚠️ Tidak ada simbol ditemukan. Coba suffix lain.")
 
 # Cek real data
 real_count = len([v for v in changes.values() if abs(v) > 0.1])
 if real_count > 0:
     st.sidebar.success(f"✅ Real: {real_count} pair")
 else:
-    st.sidebar.warning("⚠️ Data real 0 — coba suffix lain (misal 'lfx' atau 'm')")
-    # Fallback simulasi
+    st.sidebar.warning("⚠️ Data real 0 — gunakan simulasi")
+    # Fallback simulasi stabil
     np.random.seed(int(datetime.now().timestamp()) % 10000)
     for p in all_pairs:
         if p not in changes or changes[p] == 0:
@@ -134,6 +130,22 @@ for curr, plist in PAIRS.items():
                 total -= changes[p]
                 cnt += 1
     currency_strength_raw[curr] = total / cnt if cnt > 0 else 0.0
+
+def normalize_to_100(data_dict):
+    valid_vals = [v for v in data_dict.values() if v is not None and not np.isnan(v) and v != 0]
+    if not valid_vals:
+        return {k: 50.0 for k in data_dict.keys()}
+    min_val = min(valid_vals)
+    max_val = max(valid_vals)
+    if max_val == min_val:
+        return {k: 50.0 for k in data_dict.keys()}
+    result = {}
+    for k, v in data_dict.items():
+        if v is None or np.isnan(v):
+            result[k] = 50.0
+        else:
+            result[k] = ((v - min_val) / (max_val - min_val)) * 100
+    return result
 
 currency_strength_norm = normalize_to_100(currency_strength_raw)
 
