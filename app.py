@@ -6,7 +6,6 @@ from datetime import datetime
 import numpy as np
 import plotly.graph_objects as go
 import time
-import random
 
 st.set_page_config(layout="wide", page_title="G4 LFX - Real-time")
 st.title("💰 G4 LFX - Currency Dominance IA (Real-time)")
@@ -67,20 +66,14 @@ async def get_all_rates(pairs, tf):
     results = await asyncio.gather(*tasks)
     return dict(results)
 
-# --- Fungsi Simulasi Fallback (agar dashboard tidak kosong) ---
-def generate_fallback_data():
-    data = {}
-    for plist in PAIRS.values():
-        for p in plist:
-            data[p] = round(random.uniform(-50, 50), 1)
-    return data
-
 # --- Sidebar ---
 st.sidebar.header("⚙️ Pengaturan")
 tf_map = {"W1": "1w", "D1": "1d", "H4": "4h", "H1": "1h", "M15": "15m"}
 selected_tf = st.sidebar.selectbox("Pilih Timeframe", list(tf_map.keys()), index=3)
 tf_value = tf_map[selected_tf]
 
+# Pilihan interval refresh
+interval = st.sidebar.selectbox("⏱️ Refresh Interval", ["1 detik", "2 detik", "5 detik", "10 detik"], index=2)
 if st.sidebar.button("🔄 Refresh Sekarang"):
     st.rerun()
 st.sidebar.caption("🟢 ▲ = Naik | 🔴 ▼ = Turun")
@@ -94,13 +87,12 @@ for pl in PAIRS.values():
 with st.spinner(f"⏳ Mengambil data real-time {selected_tf}..."):
     changes = run_async(get_all_rates(all_pairs, tf_value))
 
-# Cek apakah ada data real
+# Cek real data
 real_count = len([v for v in changes.values() if abs(v) > 0.1])
 if real_count > 0:
     st.sidebar.success(f"✅ Real: {real_count} pair")
 else:
-    st.sidebar.warning("⚠️ Data real 0 — gunakan simulasi sementara")
-    changes = generate_fallback_data()
+    st.sidebar.warning("⚠️ Data real 0 — cek simbol di MT5")
 
 # --- Hitung Strength ---
 currency_strength = {}
@@ -176,8 +168,9 @@ fig.add_trace(go.Bar(
 fig.update_layout(height=250, margin=dict(l=10,r=10,t=10,b=10), xaxis_title="Strength Score")
 st.plotly_chart(fig, use_container_width=True)
 
-# --- Auto-refresh 1 detik ---
-time.sleep(1)
+# --- Auto-refresh dengan interval yang dipilih ---
+interval_sec = {"1 detik": 1, "2 detik": 2, "5 detik": 5, "10 detik": 10}.get(interval, 5)
+time.sleep(interval_sec)
 st.rerun()
 
 st.caption(f"🔄 Update: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
