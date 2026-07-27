@@ -6,7 +6,6 @@ from datetime import datetime
 import numpy as np
 import plotly.graph_objects as go
 import time
-import random
 
 st.set_page_config(layout="wide", page_title="G4 LFX - Currency Dominance")
 st.title("💰 G4 LFX - Currency Dominance IA (Real-time)")
@@ -32,7 +31,7 @@ PAIRS = {
     "AUD": ["AUDNZD", "AUDCAD", "AUDCHF", "AUDUSD", "EURAUD", "AUDJPY", "GBPAUD"]
 }
 
-# --- Fungsi Async (Tanpa connect/get_symbols) ---
+# --- Fungsi Async ---
 def run_async(coro):
     try:
         loop = asyncio.get_running_loop()
@@ -41,8 +40,7 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
-async def get_rates_for_symbol(symbol, tf):
-    """Ambil data untuk satu simbol."""
+async def get_rate(symbol, tf):
     try:
         api = MetaApi(token=TOKEN)
         account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
@@ -53,41 +51,22 @@ async def get_rates_for_symbol(symbol, tf):
             if cp == 0 or cn == 0:
                 return None
             mult = 100 if 'JPY' in symbol else 10000
-            change = (cn - cp) * mult
-            return change
+            return (cn - cp) * mult
         return None
-    except Exception as e:
+    except:
         return None
 
-async def get_all_rates(pairs, tf):
-    """Coba berbagai format simbol."""
+async def fetch_all(pairs, tf, suffix):
     changes = {}
-    # Daftar akhiran yang mungkin
-    suffixes = ["", "m", ".m", "lfx", ".lfx", "pro", "c", "ecn", "stp", "real", "demo"]
-    
-    async def fetch(base):
-        # Coba semua variasi
-        for suffix in suffixes:
-            symbol = base + suffix
-            try:
-                change = await get_rates_for_symbol(symbol, tf)
-                if change is not None:
-                    return base, change, symbol  # return simbol yang berhasil
-            except:
-                continue
-        return base, 0.0, None
-    
-    tasks = [fetch(p) for p in pairs]
-    results = await asyncio.gather(*tasks)
-    
-    for base, change, used_sym in results:
-        changes[base] = change
-        if used_sym and change != 0:
-            st.sidebar.success(f"✅ {base} → {used_sym}")
-    
+    progress = 0
+    for base in pairs:
+        symbol = base + suffix
+        change = await get_rate(symbol, tf)
+        changes[base] = change if change is not None else 0.0
+        progress += 1
     return changes
 
-# --- Normalisasi 0-100 ---
+# --- Normalisasi ---
 def normalize_to_100(data_dict):
     valid_vals = [v for v in data_dict.values() if v is not None and not np.isnan(v) and v != 0]
     if not valid_vals:
@@ -110,6 +89,11 @@ tf_map = {"W1": "1w", "D1": "1d", "H4": "4h", "H1": "1h", "M15": "15m"}
 selected_tf = st.sidebar.selectbox("Pilih Timeframe", list(tf_map.keys()), index=3)
 tf_value = tf_map[selected_tf]
 
+# Pilih suffix secara manual
+suffix_options = ["", "m", ".m", "lfx", ".lfx", "pro", "c", "ecn", "stp", "real", "demo"]
+selected_suffix = st.sidebar.selectbox("Akhiran Simbol", suffix_options, index=0)
+st.sidebar.info(f"Simbol akan dicoba: XAUUSD{selected_suffix}")
+
 refresh_interval = st.sidebar.selectbox("⏱️ Refresh Interval", ["Off", "2 detik", "5 detik", "10 detik"], index=1)
 if st.sidebar.button("🔄 Refresh Sekarang"):
     st.rerun()
@@ -122,16 +106,16 @@ all_pairs = []
 for pl in PAIRS.values():
     all_pairs.extend(pl)
 
-with st.spinner(f"⏳ Mengambil data real-time {selected_tf}..."):
-    changes = run_async(get_all_rates(all_pairs, tf_value))
+with st.spinner(f"⏳ Mengambil data {selected_tf} dengan suffix '{selected_suffix}'..."):
+    changes = run_async(fetch_all(all_pairs, tf_value, selected_suffix))
 
 # Cek real data
 real_count = len([v for v in changes.values() if abs(v) > 0.1])
 if real_count > 0:
     st.sidebar.success(f"✅ Real: {real_count} pair")
 else:
-    st.sidebar.warning("⚠️ Data real 0 — gunakan simulasi stabil")
-    # Fallback simulasi agar dashboard tidak kosong
+    st.sidebar.warning("⚠️ Data real 0 — coba suffix lain (misal 'lfx' atau 'm')")
+    # Fallback simulasi
     np.random.seed(int(datetime.now().timestamp()) % 10000)
     for p in all_pairs:
         if p not in changes or changes[p] == 0:
