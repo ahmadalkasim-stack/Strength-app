@@ -16,19 +16,19 @@ try:
     ACCOUNT_ID = st.secrets["METAAPI_ACCOUNT_ID"]
     st.sidebar.success("✅ MetaApi Connected")
 except:
-    st.sidebar.error("❌ Secrets tidak ditemukan! Periksa konfigurasi.")
+    st.sidebar.error("❌ Secrets tidak ditemukan!")
     st.stop()
 
-# --- 8 PAIR UTAMA DENGAN AKHIRAN "lfx" ---
+# --- PAIR STANDAR (TANPA AKHIRAN) ---
 PAIRS = {
-    "JPY": ["GBPJPYlfx", "AUDJPYlfx", "EURJPYlfx", "CADJPYlfx", "NZDJPYlfx", "USDJPYlfx", "CHFJPYlfx"],
-    "CHF": ["AUDCHFlfx", "GBPCHFlfx", "EURCHFlfx", "NZDCHFlfx", "CADCHFlfx", "USDCHFlfx", "CHFJPYlfx"],
-    "USD": ["AUDUSDlfx", "USDCADlfx", "EURUSDlfx", "GBPUSDlfx", "NZDUSDlfx", "USDCHFlfx", "USDJPYlfx"],
-    "GBP": ["GBPAUDlfx", "GBPNZDlfx", "GBPCADlfx", "EURGBPlfx", "GBPUSDlfx", "GBPCHFlfx", "GBPJPYlfx"],
-    "EUR": ["EURAUDlfx", "EURNZDlfx", "EURCADlfx", "EURGBPlfx", "EURCHFlfx", "EURUSDlfx", "EURJPYlfx"],
-    "CAD": ["AUDCADlfx", "NZDCADlfx", "EURCADlfx", "GBPCADlfx", "CADCHFlfx", "USDCADlfx", "CADJPYlfx"],
-    "NZD": ["AUDNZDlfx", "NZDCADlfx", "NZDUSDlfx", "NZDCHFlfx", "EURNZDlfx", "GBPNZDlfx", "NZDJPYlfx"],
-    "AUD": ["AUDNZDlfx", "AUDCADlfx", "AUDCHFlfx", "AUDUSDlfx", "EURAUDlfx", "AUDJPYlfx", "GBPAUDlfx"]
+    "JPY": ["GBPJPY", "AUDJPY", "EURJPY", "CADJPY", "NZDJPY", "USDJPY", "CHFJPY"],
+    "CHF": ["AUDCHF", "GBPCHF", "EURCHF", "NZDCHF", "CADCHF", "USDCHF", "CHFJPY"],
+    "USD": ["AUDUSD", "USDCAD", "EURUSD", "GBPUSD", "NZDUSD", "USDCHF", "USDJPY"],
+    "GBP": ["GBPAUD", "GBPNZD", "GBPCAD", "EURGBP", "GBPUSD", "GBPCHF", "GBPJPY"],
+    "EUR": ["EURAUD", "EURNZD", "EURCAD", "EURGBP", "EURCHF", "EURUSD", "EURJPY"],
+    "CAD": ["AUDCAD", "NZDCAD", "EURCAD", "GBPCAD", "CADCHF", "USDCAD", "CADJPY"],
+    "NZD": ["AUDNZD", "NZDCAD", "NZDUSD", "NZDCHF", "EURNZD", "GBPNZD", "NZDJPY"],
+    "AUD": ["AUDNZD", "AUDCAD", "AUDCHF", "AUDUSD", "EURAUD", "AUDJPY", "GBPAUD"]
 }
 
 # --- Fungsi Async ---
@@ -64,6 +64,24 @@ async def get_all_rates(pairs, tf):
     results = await asyncio.gather(*tasks)
     return dict(results)
 
+# --- Normalisasi 0-100 ---
+def normalize_to_100(values):
+    """Normalisasi nilai ke skala 0-100 (Min-Max)"""
+    valid = [v for v in values if v is not None and not np.isnan(v)]
+    if not valid:
+        return {k: 50 for k in values.keys()}  # default 50 jika semua 0
+    min_val = min(valid)
+    max_val = max(valid)
+    if max_val == min_val:
+        return {k: 50 for k in values.keys()}
+    result = {}
+    for k, v in values.items():
+        if v is None or np.isnan(v):
+            result[k] = 50
+        else:
+            result[k] = ((v - min_val) / (max_val - min_val)) * 100
+    return result
+
 # --- Sidebar ---
 st.sidebar.header("⚙️ Pengaturan")
 tf_map = {"W1": "1w", "D1": "1d", "H4": "4h", "H1": "1h", "M15": "15m"}
@@ -90,10 +108,15 @@ real_count = len([v for v in changes.values() if abs(v) > 0.1])
 if real_count > 0:
     st.sidebar.success(f"✅ Real: {real_count} pair")
 else:
-    st.sidebar.warning("⚠️ Data real 0 — cek simbol di MT5")
+    st.sidebar.warning("⚠️ Data real 0 — gunakan simulasi sementara")
+    # Fallback ke simulasi stabil
+    np.random.seed(int(datetime.now().timestamp()) % 10000)
+    for p in all_pairs:
+        if p not in changes or changes[p] == 0:
+            changes[p] = np.random.normal(0, 50)
 
-# --- Hitung Strength ---
-currency_strength = {}
+# --- Hitung Strength (raw) ---
+currency_strength_raw = {}
 for curr, plist in PAIRS.items():
     total, cnt = 0, 0
     for p in plist:
@@ -104,14 +127,15 @@ for curr, plist in PAIRS.items():
             elif p.endswith(curr) or curr in p[3:]:
                 total -= changes[p]
                 cnt += 1
-    currency_strength[curr] = total / cnt if cnt > 0 else 0
+    currency_strength_raw[curr] = total / cnt if cnt > 0 else 0
 
-# --- Status ---
-values = [currency_strength[c] for c in PAIRS.keys()]
-median = np.median(values) if values else 0
+# --- Normalisasi ke 0-100 ---
+currency_strength_norm = normalize_to_100(currency_strength_raw)
+
+# --- Status STRONG/WEAK berdasarkan median 50 ---
 status = {}
 for c in PAIRS.keys():
-    if currency_strength[c] > median:
+    if currency_strength_norm[c] >= 50:
         status[c] = "STRONG"
     else:
         status[c] = "WEAK"
@@ -119,7 +143,8 @@ for c in PAIRS.keys():
 # --- Tampilan ---
 def tampil(curr, col):
     s = status[curr]
-    label = f"{curr}-{s}"
+    score = currency_strength_norm[curr]
+    label = f"{curr}-{s} ({score:.1f})"
     with col:
         st.markdown(f"### {label}")
         st.caption(f"{selected_tf}")
@@ -135,28 +160,31 @@ def tampil(curr, col):
         st.caption(f"Total: {total_pips:.1f}")
         st.divider()
 
-st.subheader(f"📊 Currency Dominance IA - {selected_tf}")
+st.subheader(f"📊 Currency Dominance IA - {selected_tf} (0-100)")
 
-# Layout 4+4 (seperti sebelumnya)
 c1, c2, c3, c4 = st.columns(4)
 tampil("JPY", c1); tampil("USD", c2); tampil("EUR", c3); tampil("GBP", c4)
 
 c1, c2, c3, c4 = st.columns(4)
 tampil("AUD", c1); tampil("NZD", c2); tampil("CAD", c3); tampil("CHF", c4)
 
-# --- Daily Currency Strength Meter ---
-st.subheader("📊 Daily Currency Strength Meter")
-sorted_curr = sorted(PAIRS.keys(), key=lambda x: currency_strength[x], reverse=True)
-max_val = max(abs(v) for v in currency_strength.values() if v != 0) or 1
-norm = {c: (currency_strength[c] / max_val) * 10 for c in sorted_curr}
+# --- Daily Currency Strength Meter (0-100) ---
+st.subheader("📊 Daily Currency Strength Meter (0-100)")
+sorted_curr = sorted(PAIRS.keys(), key=lambda x: currency_strength_norm[x], reverse=True)
+values = [currency_strength_norm[c] for c in sorted_curr]
 
 fig = go.Figure()
 fig.add_trace(go.Bar(
-    x=list(norm.values()), y=list(norm.keys()), orientation='h',
-    marker_color=['#2ecc71' if v > 0 else '#e74c3c' for v in norm.values()],
-    text=[f"{v:.2f}" for v in norm.values()], textposition='outside'
+    x=values, y=sorted_curr, orientation='h',
+    marker_color=['#2ecc71' if v >= 50 else '#e74c3c' for v in values],
+    text=[f"{v:.1f}" for v in values], textposition='outside'
 ))
-fig.update_layout(height=250, margin=dict(l=10,r=10,t=10,b=10), xaxis_title="Strength Score")
+fig.update_layout(
+    height=250,
+    margin=dict(l=10,r=10,t=10,b=10),
+    xaxis_title="Strength (0-100)",
+    xaxis=dict(range=[0, 100])
+)
 st.plotly_chart(fig, use_container_width=True)
 
 # --- Auto-refresh ---
@@ -166,4 +194,4 @@ if refresh_interval != "Off":
     st.rerun()
 
 st.caption(f"🔄 Update: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
-st.caption("🟢 ▲ Naik | 🔴 ▼ Turun")
+st.caption("🟢 ▲ Naik | 🔴 ▼ Turun | Skor 0-100")
