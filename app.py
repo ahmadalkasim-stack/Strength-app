@@ -6,6 +6,7 @@ from datetime import datetime
 import numpy as np
 import plotly.graph_objects as go
 import time
+import random
 
 st.set_page_config(layout="wide", page_title="G4 LFX - Currency Dominance")
 st.title("💰 G4 LFX - Currency Dominance IA (Real-time)")
@@ -19,7 +20,7 @@ except:
     st.sidebar.error("❌ Secrets tidak ditemukan!")
     st.stop()
 
-# --- PAIR STANDAR (TANPA AKHIRAN) ---
+# --- 8 PAIR UTAMA (TANPA AKHIRAN) ---
 PAIRS = {
     "JPY": ["GBPJPY", "AUDJPY", "EURJPY", "CADJPY", "NZDJPY", "USDJPY", "CHFJPY"],
     "CHF": ["AUDCHF", "GBPCHF", "EURCHF", "NZDCHF", "CADCHF", "USDCHF", "CHFJPY"],
@@ -30,6 +31,37 @@ PAIRS = {
     "NZD": ["AUDNZD", "NZDCAD", "NZDUSD", "NZDCHF", "EURNZD", "GBPNZD", "NZDJPY"],
     "AUD": ["AUDNZD", "AUDCAD", "AUDCHF", "AUDUSD", "EURAUD", "AUDJPY", "GBPAUD"]
 }
+
+# --- Fungsi Normalisasi 0-100 (Robust) ---
+def normalize_to_100(data_dict):
+    """
+    Normalisasi nilai dictionary ke skala 0-100.
+    Menangani nilai None, NaN, dan semua 0.
+    """
+    # Filter nilai valid (angka)
+    valid_vals = []
+    for v in data_dict.values():
+        if v is not None and isinstance(v, (int, float)) and not np.isnan(v):
+            valid_vals.append(v)
+    
+    # Jika tidak ada nilai valid, kembalikan semua 50
+    if not valid_vals:
+        return {k: 50.0 for k in data_dict.keys()}
+    
+    min_val = min(valid_vals)
+    max_val = max(valid_vals)
+    
+    # Jika semua nilai sama, kembalikan semua 50
+    if max_val == min_val:
+        return {k: 50.0 for k in data_dict.keys()}
+    
+    result = {}
+    for k, v in data_dict.items():
+        if v is None or not isinstance(v, (int, float)) or np.isnan(v):
+            result[k] = 50.0
+        else:
+            result[k] = ((v - min_val) / (max_val - min_val)) * 100
+    return result
 
 # --- Fungsi Async ---
 def run_async(coro):
@@ -64,24 +96,6 @@ async def get_all_rates(pairs, tf):
     results = await asyncio.gather(*tasks)
     return dict(results)
 
-# --- Normalisasi 0-100 ---
-def normalize_to_100(values):
-    """Normalisasi nilai ke skala 0-100 (Min-Max)"""
-    valid = [v for v in values if v is not None and not np.isnan(v)]
-    if not valid:
-        return {k: 50 for k in values.keys()}  # default 50 jika semua 0
-    min_val = min(valid)
-    max_val = max(valid)
-    if max_val == min_val:
-        return {k: 50 for k in values.keys()}
-    result = {}
-    for k, v in values.items():
-        if v is None or np.isnan(v):
-            result[k] = 50
-        else:
-            result[k] = ((v - min_val) / (max_val - min_val)) * 100
-    return result
-
 # --- Sidebar ---
 st.sidebar.header("⚙️ Pengaturan")
 tf_map = {"W1": "1w", "D1": "1d", "H4": "4h", "H1": "1h", "M15": "15m"}
@@ -108,8 +122,8 @@ real_count = len([v for v in changes.values() if abs(v) > 0.1])
 if real_count > 0:
     st.sidebar.success(f"✅ Real: {real_count} pair")
 else:
-    st.sidebar.warning("⚠️ Data real 0 — gunakan simulasi sementara")
-    # Fallback ke simulasi stabil
+    st.sidebar.warning("⚠️ Data real 0 — gunakan simulasi stabil")
+    # Fallback simulasi
     np.random.seed(int(datetime.now().timestamp()) % 10000)
     for p in all_pairs:
         if p not in changes or changes[p] == 0:
@@ -127,12 +141,12 @@ for curr, plist in PAIRS.items():
             elif p.endswith(curr) or curr in p[3:]:
                 total -= changes[p]
                 cnt += 1
-    currency_strength_raw[curr] = total / cnt if cnt > 0 else 0
+    currency_strength_raw[curr] = total / cnt if cnt > 0 else 0.0
 
 # --- Normalisasi ke 0-100 ---
 currency_strength_norm = normalize_to_100(currency_strength_raw)
 
-# --- Status STRONG/WEAK berdasarkan median 50 ---
+# --- Status STRONG/WEAK ---
 status = {}
 for c in PAIRS.keys():
     if currency_strength_norm[c] >= 50:
