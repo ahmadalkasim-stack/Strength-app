@@ -6,9 +6,8 @@ from datetime import datetime
 import numpy as np
 import plotly.graph_objects as go
 import time
-import random
 
-st.set_page_config(layout="wide", page_title="G4 LFX - Currency Dominance")
+st.set_page_config(layout="wide", page_title="G4 LFX - Real-time")
 st.title("💰 G4 LFX - Currency Dominance IA (Real-time)")
 
 # --- Secrets ---
@@ -20,8 +19,8 @@ except:
     st.sidebar.error("❌ Secrets tidak ditemukan!")
     st.stop()
 
-# --- 8 PAIR UTAMA (TANPA AKHIRAN) ---
-PAIRS = {
+# --- Base pair names ---
+BASE_PAIRS = {
     "JPY": ["GBPJPY", "AUDJPY", "EURJPY", "CADJPY", "NZDJPY", "USDJPY", "CHFJPY"],
     "CHF": ["AUDCHF", "GBPCHF", "EURCHF", "NZDCHF", "CADCHF", "USDCHF", "CHFJPY"],
     "USD": ["AUDUSD", "USDCAD", "EURUSD", "GBPUSD", "NZDUSD", "USDCHF", "USDJPY"],
@@ -32,37 +31,6 @@ PAIRS = {
     "AUD": ["AUDNZD", "AUDCAD", "AUDCHF", "AUDUSD", "EURAUD", "AUDJPY", "GBPAUD"]
 }
 
-# --- Fungsi Normalisasi 0-100 (Robust) ---
-def normalize_to_100(data_dict):
-    """
-    Normalisasi nilai dictionary ke skala 0-100.
-    Menangani nilai None, NaN, dan semua 0.
-    """
-    # Filter nilai valid (angka)
-    valid_vals = []
-    for v in data_dict.values():
-        if v is not None and isinstance(v, (int, float)) and not np.isnan(v):
-            valid_vals.append(v)
-    
-    # Jika tidak ada nilai valid, kembalikan semua 50
-    if not valid_vals:
-        return {k: 50.0 for k in data_dict.keys()}
-    
-    min_val = min(valid_vals)
-    max_val = max(valid_vals)
-    
-    # Jika semua nilai sama, kembalikan semua 50
-    if max_val == min_val:
-        return {k: 50.0 for k in data_dict.keys()}
-    
-    result = {}
-    for k, v in data_dict.items():
-        if v is None or not isinstance(v, (int, float)) or np.isnan(v):
-            result[k] = 50.0
-        else:
-            result[k] = ((v - min_val) / (max_val - min_val)) * 100
-    return result
-
 # --- Fungsi Async ---
 def run_async(coro):
     try:
@@ -72,29 +40,40 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
-async def get_all_rates(pairs, tf):
-    changes = {}
-    async def fetch(pair):
-        try:
-            api = MetaApi(token=TOKEN)
-            account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
-            await account.connect()
-            rates = await account.get_rates(pair, tf, 2)
-            await account.disconnect()
-            if rates and len(rates) >= 2:
-                cp = rates[0]['close']
-                cn = rates[-1]['close']
-                if cp == 0 or cn == 0:
-                    return pair, 0.0
-                mult = 100 if 'JPY' in pair else 10000
-                change = (cn - cp) * mult
-                return pair, change
-            return pair, 0.0
-        except Exception as e:
-            return pair, 0.0
-    tasks = [fetch(p) for p in pairs]
-    results = await asyncio.gather(*tasks)
-    return dict(results)
+async def get_symbol_list():
+    """Mendapatkan daftar simbol yang tersedia di akun MT5."""
+    try:
+        api = MetaApi(token=TOKEN)
+        account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
+        await account.connect()
+        symbols = await account.get_symbols()
+        await account.disconnect()
+        if symbols:
+            return [s['symbol'] for s in symbols]
+        return []
+    except Exception as e:
+        st.sidebar.error(f"Error get symbols: {e}")
+        return []
+
+async def get_rates_for_symbol(symbol, tf):
+    """Ambil data untuk satu simbol."""
+    try:
+        api = MetaApi(token=TOKEN)
+        account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
+        await account.connect()
+        rates = await account.get_rates(symbol, tf, 2)
+        await account.disconnect()
+        if rates and len(rates) >= 2:
+            cp = rates[0]['close']
+            cn = rates[-1]['close']
+            if cp == 0 or cn == 0:
+                return None
+            mult = 100 if 'JPY' in symbol else 10000
+            change = (cn - cp) * mult
+            return change
+        return None
+    except:
+        return None
 
 # --- Sidebar ---
 st.sidebar.header("⚙️ Pengaturan")
@@ -103,35 +82,84 @@ selected_tf = st.sidebar.selectbox("Pilih Timeframe", list(tf_map.keys()), index
 tf_value = tf_map[selected_tf]
 
 refresh_interval = st.sidebar.selectbox("⏱️ Refresh Interval", ["Off", "2 detik", "5 detik", "10 detik"], index=1)
+
 if st.sidebar.button("🔄 Refresh Sekarang"):
     st.rerun()
 
 st.sidebar.caption("🟢 ▲ = Naik | 🔴 ▼ = Turun")
 st.sidebar.caption(f"⏱️ Update: {datetime.now().strftime('%H:%M:%S')}")
 
-# --- Ambil Data ---
-all_pairs = []
-for pl in PAIRS.values():
-    all_pairs.extend(pl)
+# --- Ambil daftar simbol dari MT5 ---
+with st.spinner("⏳ Mendapatkan daftar simbol dari MT5..."):
+    symbols = run_async(get_symbol_list())
 
-with st.spinner(f"⏳ Mengambil data real-time {selected_tf}..."):
-    changes = run_async(get_all_rates(all_pairs, tf_value))
+if not symbols:
+    st.sidebar.error("❌ Gagal mengambil daftar simbol. Periksa akun MT5.")
+    st.stop()
+
+st.sidebar.success(f"✅ {len(symbols)} simbol ditemukan")
+
+# --- Cari simbol yang cocok untuk setiap pair ---
+# Daftar akhiran yang umum
+suffixes = ["", "m", ".m", "lfx", "pro", "c", "ecn", "stp", "real", "demo"]
+
+# Mapping pair base -> simbol aktual
+symbol_map = {}
+for curr, plist in BASE_PAIRS.items():
+    for base in plist:
+        found = None
+        for suffix in suffixes:
+            candidate = base + suffix
+            candidate_upper = base.upper() + suffix.upper()
+            if candidate in symbols or candidate_upper in symbols:
+                found = candidate if candidate in symbols else candidate_upper
+                break
+        if found:
+            symbol_map[base] = found
+        else:
+            # Coba tanpa akhiran (case insensitive)
+            for s in symbols:
+                if s.upper() == base.upper():
+                    symbol_map[base] = s
+                    break
+
+if symbol_map:
+    st.sidebar.success(f"✅ {len(symbol_map)} simbol ditemukan")
+    # Tampilkan contoh di sidebar
+    example = list(symbol_map.items())[:3]
+    st.sidebar.info(f"Contoh: {example}")
+else:
+    st.sidebar.error("❌ Tidak ada simbol yang cocok! Periksa daftar simbol di MT5.")
+    # Tampilkan 10 simbol pertama untuk referensi
+    st.sidebar.text("10 simbol pertama:")
+    st.sidebar.text(symbols[:10])
+
+# --- Ambil data real menggunakan symbol_map ---
+changes = {}
+if symbol_map:
+    with st.spinner(f"⏳ Mengambil data real-time {selected_tf}..."):
+        for base, sym in symbol_map.items():
+            change = run_async(get_rates_for_symbol(sym, tf_value))
+            if change is not None:
+                changes[base] = change
+            else:
+                changes[base] = 0.0
 
 # Cek real data
 real_count = len([v for v in changes.values() if abs(v) > 0.1])
 if real_count > 0:
     st.sidebar.success(f"✅ Real: {real_count} pair")
 else:
-    st.sidebar.warning("⚠️ Data real 0 — gunakan simulasi stabil")
-    # Fallback simulasi
+    st.sidebar.warning("⚠️ Data real 0 — mungkin market tutup atau simbol tidak valid")
+    # Fallback simulasi agar tampilan tidak kosong
     np.random.seed(int(datetime.now().timestamp()) % 10000)
-    for p in all_pairs:
-        if p not in changes or changes[p] == 0:
-            changes[p] = np.random.normal(0, 50)
+    for base in symbol_map.keys():
+        if base not in changes or changes[base] == 0:
+            changes[base] = np.random.normal(0, 50)
 
-# --- Hitung Strength (raw) ---
+# --- Hitung Strength ---
 currency_strength_raw = {}
-for curr, plist in PAIRS.items():
+for curr, plist in BASE_PAIRS.items():
     total, cnt = 0, 0
     for p in plist:
         if p in changes:
@@ -143,12 +171,28 @@ for curr, plist in PAIRS.items():
                 cnt += 1
     currency_strength_raw[curr] = total / cnt if cnt > 0 else 0.0
 
-# --- Normalisasi ke 0-100 ---
+# Normalisasi 0-100
+def normalize_to_100(data_dict):
+    valid_vals = [v for v in data_dict.values() if v is not None and not np.isnan(v) and v != 0]
+    if not valid_vals:
+        return {k: 50.0 for k in data_dict.keys()}
+    min_val = min(valid_vals)
+    max_val = max(valid_vals)
+    if max_val == min_val:
+        return {k: 50.0 for k in data_dict.keys()}
+    result = {}
+    for k, v in data_dict.items():
+        if v is None or np.isnan(v):
+            result[k] = 50.0
+        else:
+            result[k] = ((v - min_val) / (max_val - min_val)) * 100
+    return result
+
 currency_strength_norm = normalize_to_100(currency_strength_raw)
 
-# --- Status STRONG/WEAK ---
+# Status
 status = {}
-for c in PAIRS.keys():
+for c in BASE_PAIRS.keys():
     if currency_strength_norm[c] >= 50:
         status[c] = "STRONG"
     else:
@@ -164,7 +208,7 @@ def tampil(curr, col):
         st.caption(f"{selected_tf}")
         total_pips = 0
         base = "#00cc44" if s == "STRONG" else "#ff3333"
-        for p in PAIRS[curr]:
+        for p in BASE_PAIRS[curr]:
             if p in changes:
                 pips = changes[p]
                 total_pips += abs(pips)
@@ -182,9 +226,9 @@ tampil("JPY", c1); tampil("USD", c2); tampil("EUR", c3); tampil("GBP", c4)
 c1, c2, c3, c4 = st.columns(4)
 tampil("AUD", c1); tampil("NZD", c2); tampil("CAD", c3); tampil("CHF", c4)
 
-# --- Daily Currency Strength Meter (0-100) ---
+# --- Daily Currency Strength Meter ---
 st.subheader("📊 Daily Currency Strength Meter (0-100)")
-sorted_curr = sorted(PAIRS.keys(), key=lambda x: currency_strength_norm[x], reverse=True)
+sorted_curr = sorted(BASE_PAIRS.keys(), key=lambda x: currency_strength_norm[x], reverse=True)
 values = [currency_strength_norm[c] for c in sorted_curr]
 
 fig = go.Figure()
