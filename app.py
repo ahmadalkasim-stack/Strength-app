@@ -7,7 +7,7 @@ import numpy as np
 import plotly.graph_objects as go
 import time
 
-st.set_page_config(layout="wide", page_title="G4 LFX - Real-time")
+st.set_page_config(layout="wide", page_title="G4 LFX - Currency Dominance")
 st.title("💰 G4 LFX - Currency Dominance IA (Real-time)")
 
 # --- Secrets ---
@@ -16,24 +16,22 @@ try:
     ACCOUNT_ID = st.secrets["METAAPI_ACCOUNT_ID"]
     st.sidebar.success("✅ MetaApi Connected")
 except:
-    st.sidebar.error("❌ Secrets tidak ditemukan!")
+    st.sidebar.error("❌ Secrets tidak ditemukan! Periksa konfigurasi.")
     st.stop()
 
-# --- Base pair names (tanpa akhiran) ---
-BASE_PAIRS = {
-    "JPY": ["GBPJPY", "AUDJPY", "EURJPY", "CADJPY", "NZDJPY", "USDJPY", "CHFJPY"],
-    "CHF": ["AUDCHF", "GBPCHF", "EURCHF", "NZDCHF", "CADCHF", "USDCHF", "CHFJPY"],
-    "USD": ["AUDUSD", "USDCAD", "EURUSD", "GBPUSD", "NZDUSD", "USDCHF", "USDJPY"],
-    "GBP": ["GBPAUD", "GBPNZD", "GBPCAD", "EURGBP", "GBPUSD", "GBPCHF", "GBPJPY"],
-    "EUR": ["EURAUD", "EURNZD", "EURCAD", "EURGBP", "EURCHF", "EURUSD", "EURJPY"],
-    "CAD": ["AUDCAD", "NZDCAD", "EURCAD", "GBPCAD", "CADCHF", "USDCAD", "CADJPY"],
-    "NZD": ["AUDNZD", "NZDCAD", "NZDUSD", "NZDCHF", "EURNZD", "GBPNZD", "NZDJPY"],
-    "AUD": ["AUDNZD", "AUDCAD", "AUDCHF", "AUDUSD", "EURAUD", "AUDJPY", "GBPAUD"],
-    "XAU": ["XAUUSD", "XAUJPY", "XAUGBP", "XAUEUR", "XAUAUD", "XAUNZD", "XAUCAD", "XAUCHF"],
-    "BTC": ["BTCUSD", "BTCJPY", "BTCGBP", "BTCEUR", "BTCAUD", "BTCNZD", "BTCCAD", "BTCCHF"]
+# --- 8 PAIR UTAMA DENGAN AKHIRAN "lfx" ---
+PAIRS = {
+    "JPY": ["GBPJPYlfx", "AUDJPYlfx", "EURJPYlfx", "CADJPYlfx", "NZDJPYlfx", "USDJPYlfx", "CHFJPYlfx"],
+    "CHF": ["AUDCHFlfx", "GBPCHFlfx", "EURCHFlfx", "NZDCHFlfx", "CADCHFlfx", "USDCHFlfx", "CHFJPYlfx"],
+    "USD": ["AUDUSDlfx", "USDCADlfx", "EURUSDlfx", "GBPUSDlfx", "NZDUSDlfx", "USDCHFlfx", "USDJPYlfx"],
+    "GBP": ["GBPAUDlfx", "GBPNZDlfx", "GBPCADlfx", "EURGBPlfx", "GBPUSDlfx", "GBPCHFlfx", "GBPJPYlfx"],
+    "EUR": ["EURAUDlfx", "EURNZDlfx", "EURCADlfx", "EURGBPlfx", "EURCHFlfx", "EURUSDlfx", "EURJPYlfx"],
+    "CAD": ["AUDCADlfx", "NZDCADlfx", "EURCADlfx", "GBPCADlfx", "CADCHFlfx", "USDCADlfx", "CADJPYlfx"],
+    "NZD": ["AUDNZDlfx", "NZDCADlfx", "NZDUSDlfx", "NZDCHFlfx", "EURNZDlfx", "GBPNZDlfx", "NZDJPYlfx"],
+    "AUD": ["AUDNZDlfx", "AUDCADlfx", "AUDCHFlfx", "AUDUSDlfx", "EURAUDlfx", "AUDJPYlfx", "GBPAUDlfx"]
 }
 
-# --- Fungsi Async dengan Auto-Detect Simbol ---
+# --- Fungsi Async ---
 def run_async(coro):
     try:
         loop = asyncio.get_running_loop()
@@ -42,44 +40,29 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
-async def get_rates_with_autodetect(pair, tf):
-    """Coba berbagai varian simbol: tanpa akhiran, +m, .m"""
-    variants = [pair, pair + "m", pair + ".m"]
-    # Tambahkan variasi untuk XAU dan BTC
-    if pair.startswith("XAU"):
-        variants += ["XAUUSD", "GOLD", "XAUSPOT"]
-    if pair.startswith("BTC"):
-        variants += ["BTCUSD", "BITCOIN"]
-    
-    api = MetaApi(token=TOKEN)
-    account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
-    await account.connect()
-    
-    for sym in variants:
+async def get_all_rates(pairs, tf):
+    changes = {}
+    async def fetch(pair):
         try:
-            rates = await account.get_rates(sym, tf, 2)
+            api = MetaApi(token=TOKEN)
+            account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
+            await account.connect()
+            rates = await account.get_rates(pair, tf, 2)
+            await account.disconnect()
             if rates and len(rates) >= 2:
                 cp = rates[0]['close']
                 cn = rates[-1]['close']
                 if cp == 0 or cn == 0:
-                    continue
-                mult = 100 if ('JPY' in pair or 'XAU' in pair or 'BTC' in pair) else 10000
+                    return pair, 0.0
+                mult = 100 if 'JPY' in pair else 10000
                 change = (cn - cp) * mult
-                await account.disconnect()
-                return pair, change, sym  # kembalikan simbol yang berhasil
-        except:
-            continue
-    await account.disconnect()
-    return pair, 0.0, None
-
-async def get_all_rates(pairs, tf):
-    results = {}
-    for pair in pairs:
-        p, change, used_sym = await get_rates_with_autodetect(pair, tf)
-        results[p] = change
-        if used_sym and change != 0:
-            st.sidebar.success(f"✅ {p} → {used_sym}")
-    return results
+                return pair, change
+            return pair, 0.0
+        except Exception as e:
+            return pair, 0.0
+    tasks = [fetch(p) for p in pairs]
+    results = await asyncio.gather(*tasks)
+    return dict(results)
 
 # --- Sidebar ---
 st.sidebar.header("⚙️ Pengaturan")
@@ -96,7 +79,7 @@ st.sidebar.caption(f"⏱️ Update: {datetime.now().strftime('%H:%M:%S')}")
 
 # --- Ambil Data ---
 all_pairs = []
-for pl in BASE_PAIRS.values():
+for pl in PAIRS.values():
     all_pairs.extend(pl)
 
 with st.spinner(f"⏳ Mengambil data real-time {selected_tf}..."):
@@ -108,15 +91,10 @@ if real_count > 0:
     st.sidebar.success(f"✅ Real: {real_count} pair")
 else:
     st.sidebar.warning("⚠️ Data real 0 — cek simbol di MT5")
-    # Fallback ke data simulasi
-    np.random.seed(int(datetime.now().timestamp()) % 10000)
-    for p in all_pairs:
-        if p not in changes or changes[p] == 0:
-            changes[p] = np.random.normal(0, 50)
 
 # --- Hitung Strength ---
 currency_strength = {}
-for curr, plist in BASE_PAIRS.items():
+for curr, plist in PAIRS.items():
     total, cnt = 0, 0
     for p in plist:
         if p in changes:
@@ -129,13 +107,11 @@ for curr, plist in BASE_PAIRS.items():
     currency_strength[curr] = total / cnt if cnt > 0 else 0
 
 # --- Status ---
-values = [currency_strength[c] for c in BASE_PAIRS.keys() if c not in ["XAU", "BTC"]]
+values = [currency_strength[c] for c in PAIRS.keys()]
 median = np.median(values) if values else 0
 status = {}
-for c in BASE_PAIRS.keys():
-    if c in ["XAU", "BTC"]:
-        status[c] = "STRONG"
-    elif currency_strength[c] > median:
+for c in PAIRS.keys():
+    if currency_strength[c] > median:
         status[c] = "STRONG"
     else:
         status[c] = "WEAK"
@@ -149,7 +125,7 @@ def tampil(curr, col):
         st.caption(f"{selected_tf}")
         total_pips = 0
         base = "#00cc44" if s == "STRONG" else "#ff3333"
-        for p in BASE_PAIRS[curr]:
+        for p in PAIRS[curr]:
             if p in changes:
                 pips = changes[p]
                 total_pips += abs(pips)
@@ -161,9 +137,7 @@ def tampil(curr, col):
 
 st.subheader(f"📊 Currency Dominance IA - {selected_tf}")
 
-c1, c2 = st.columns(2)
-tampil("XAU", c1); tampil("BTC", c2)
-
+# Layout 4+4 (seperti sebelumnya)
 c1, c2, c3, c4 = st.columns(4)
 tampil("JPY", c1); tampil("USD", c2); tampil("EUR", c3); tampil("GBP", c4)
 
@@ -172,8 +146,7 @@ tampil("AUD", c1); tampil("NZD", c2); tampil("CAD", c3); tampil("CHF", c4)
 
 # --- Daily Currency Strength Meter ---
 st.subheader("📊 Daily Currency Strength Meter")
-sorted_curr = [c for c in BASE_PAIRS.keys() if c not in ["XAU", "BTC"]]
-sorted_curr = sorted(sorted_curr, key=lambda x: currency_strength[x], reverse=True)
+sorted_curr = sorted(PAIRS.keys(), key=lambda x: currency_strength[x], reverse=True)
 max_val = max(abs(v) for v in currency_strength.values() if v != 0) or 1
 norm = {c: (currency_strength[c] / max_val) * 10 for c in sorted_curr}
 
@@ -193,4 +166,4 @@ if refresh_interval != "Off":
     st.rerun()
 
 st.caption(f"🔄 Update: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
-st.caption("🟢 ▲ Naik | 🔴 ▼ Turun | 🟡 XAU | 🪙 BTC")
+st.caption("🟢 ▲ Naik | 🔴 ▼ Turun")
