@@ -1,23 +1,15 @@
 import streamlit as st
 import pandas as pd
-import asyncio
-from metaapi_cloud_sdk import MetaApi
-from datetime import datetime
 import numpy as np
 import plotly.graph_objects as go
+from datetime import datetime
 import time
+import random
 
 st.set_page_config(layout="wide", page_title="G4 LFX - Currency Dominance")
-st.title("💰 G4 LFX - Currency Dominance IA (Real-time)")
+st.title("💰 G4 LFX - Currency Dominance IA (Real-time Simulasi)")
 
-# --- Secrets ---
-try:
-    TOKEN = st.secrets["METAAPI_TOKEN"]
-    ACCOUNT_ID = st.secrets["METAAPI_ACCOUNT_ID"]
-    st.sidebar.success("✅ MetaApi Connected")
-except:
-    st.sidebar.error("❌ Secrets tidak ditemukan!")
-    st.stop()
+st.sidebar.info("📊 Mode Simulasi - Data bergerak setiap refresh")
 
 # --- PAIRS ---
 PAIRS = {
@@ -31,112 +23,19 @@ PAIRS = {
     "AUD": ["AUDNZD", "AUDCAD", "AUDCHF", "AUDUSD", "EURAUD", "AUDJPY", "GBPAUD"]
 }
 
-# --- Fungsi Async dengan Timeout ---
-def run_async(coro):
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
-
-async def get_rate_with_timeout(symbol, tf, timeout=5):
-    try:
-        api = MetaApi(token=TOKEN)
-        account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
-        # Gunakan timeout untuk menghindari loading selamanya
-        rates = await asyncio.wait_for(account.get_rates(symbol, tf, 2), timeout=timeout)
-        if rates and len(rates) >= 2:
-            cp = rates[0]['close']
-            cn = rates[-1]['close']
-            if cp == 0 or cn == 0:
-                return None
-            mult = 100 if 'JPY' in symbol else 10000
-            return (cn - cp) * mult
-        return None
-    except asyncio.TimeoutError:
-        return None
-    except:
-        return None
-
-async def fetch_all(pairs, tf):
-    changes = {}
-    found = {}
-    suffixes = ["", "lfx", "m"]
-    
-    for base in pairs:
-        for suffix in suffixes:
-            symbol = base + suffix
-            change = await get_rate_with_timeout(symbol, tf, timeout=4)
-            if change is not None:
-                changes[base] = change
-                found[base] = symbol
-                break
-        if base not in changes:
-            changes[base] = 0.0
-    
-    return changes, found
-
-# --- Sidebar ---
-st.sidebar.header("⚙️ Pengaturan")
-tf_map = {"W1": "1w", "D1": "1d", "H4": "4h", "H1": "1h", "M15": "15m"}
-selected_tf = st.sidebar.selectbox("Pilih Timeframe", list(tf_map.keys()), index=3)
-tf_value = tf_map[selected_tf]
-
-use_simulasi = st.sidebar.checkbox("📊 Gunakan Simulasi (Jika Real Lambat)", value=True)
-refresh_interval = st.sidebar.selectbox("⏱️ Refresh Interval", ["Off", "2 detik", "5 detik", "10 detik"], index=1)
-
-if st.sidebar.button("🔄 Refresh Sekarang"):
-    st.rerun()
-
-st.sidebar.caption("🟢 ▲ = Naik | 🔴 ▼ = Turun")
-st.sidebar.caption(f"⏱️ Update: {datetime.now().strftime('%H:%M:%S')}")
-
-# --- Ambil Data ---
-all_pairs = []
-for pl in PAIRS.values():
-    all_pairs.extend(pl)
-
-with st.spinner(f"⏳ Mengambil data {selected_tf} (timeout 4 detik)..."):
-    changes, found_symbols = run_async(fetch_all(all_pairs, tf_value))
-
-# Tampilkan simbol yang ditemukan
-if found_symbols:
-    st.sidebar.success(f"✅ {len(found_symbols)} simbol ditemukan")
-else:
-    st.sidebar.warning("⚠️ Tidak ada simbol ditemukan")
-
-# Cek real data
-real_count = len([v for v in changes.values() if abs(v) > 0.1])
-if real_count > 0:
-    st.sidebar.success(f"✅ Real: {real_count} pair")
-else:
-    if use_simulasi:
-        st.sidebar.info("📊 Menggunakan data simulasi (real lambat/tidak ditemukan)")
-        # Simulasi stabil
-        np.random.seed(int(datetime.now().timestamp()) % 10000)
-        for p in all_pairs:
-            if p not in changes or changes[p] == 0:
-                changes[p] = np.random.normal(0, 50)
-    else:
-        st.sidebar.warning("⚠️ Real 0 dan simulasi dimatikan")
+# --- Generate data simulasi yang bergerak ---
+def generate_data():
+    np.random.seed(int(datetime.now().timestamp()) % 10000)
+    data = {}
+    for plist in PAIRS.values():
+        for p in plist:
+            # Simulasi pergerakan dengan normal
+            data[p] = np.random.normal(0, 50)
+    return data
 
 # --- Normalisasi 0-100 ---
-currency_strength_raw = {}
-for curr, plist in PAIRS.items():
-    total, cnt = 0, 0
-    for p in plist:
-        if p in changes:
-            if p.startswith(curr):
-                total += changes[p]
-                cnt += 1
-            elif p.endswith(curr) or curr in p[3:]:
-                total -= changes[p]
-                cnt += 1
-    currency_strength_raw[curr] = total / cnt if cnt > 0 else 0.0
-
 def normalize_to_100(data_dict):
-    valid_vals = [v for v in data_dict.values() if v is not None and not np.isnan(v) and v != 0]
+    valid_vals = [v for v in data_dict.values() if v is not None and not np.isnan(v)]
     if not valid_vals:
         return {k: 50.0 for k in data_dict.keys()}
     min_val = min(valid_vals)
@@ -150,6 +49,35 @@ def normalize_to_100(data_dict):
         else:
             result[k] = ((v - min_val) / (max_val - min_val)) * 100
     return result
+
+# --- Sidebar ---
+st.sidebar.header("⚙️ Pengaturan")
+tf_map = {"W1": "1w", "D1": "1d", "H4": "4h", "H1": "1h", "M15": "15m"}
+selected_tf = st.sidebar.selectbox("Pilih Timeframe", list(tf_map.keys()), index=3)
+refresh_interval = st.sidebar.selectbox("⏱️ Refresh Interval", ["Off", "2 detik", "5 detik", "10 detik"], index=1)
+if st.sidebar.button("🔄 Refresh Sekarang"):
+    st.rerun()
+
+st.sidebar.caption("🟢 ▲ = Naik | 🔴 ▼ = Turun")
+st.sidebar.caption(f"⏱️ Update: {datetime.now().strftime('%H:%M:%S')}")
+st.sidebar.success("✅ Data simulasi berjalan")
+
+# --- Ambil Data Simulasi ---
+changes = generate_data()
+
+# --- Hitung Strength ---
+currency_strength_raw = {}
+for curr, plist in PAIRS.items():
+    total, cnt = 0, 0
+    for p in plist:
+        if p in changes:
+            if p.startswith(curr):
+                total += changes[p]
+                cnt += 1
+            elif p.endswith(curr) or curr in p[3:]:
+                total -= changes[p]
+                cnt += 1
+    currency_strength_raw[curr] = total / cnt if cnt > 0 else 0.0
 
 currency_strength_norm = normalize_to_100(currency_strength_raw)
 
