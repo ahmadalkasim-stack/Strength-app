@@ -6,6 +6,7 @@ from datetime import datetime
 import numpy as np
 import plotly.graph_objects as go
 import time
+import random
 
 st.set_page_config(layout="wide", page_title="G4 LFX - Real-time")
 st.title("💰 G4 LFX - Currency Dominance IA (Real-time)")
@@ -16,7 +17,7 @@ try:
     ACCOUNT_ID = st.secrets["METAAPI_ACCOUNT_ID"]
     st.sidebar.success("✅ MetaApi Connected")
 except:
-    st.sidebar.error("❌ Secrets tidak ditemukan!")
+    st.sidebar.error("❌ Secrets tidak ditemukan! Periksa konfigurasi.")
     st.stop()
 
 # --- SEMUA PAIR PAKAI AKHIRAN "m" ---
@@ -60,11 +61,19 @@ async def get_all_rates(pairs, tf):
                 change = (cn - cp) * mult
                 return pair, change
             return pair, 0.0
-        except:
+        except Exception as e:
             return pair, 0.0
     tasks = [fetch(p) for p in pairs]
     results = await asyncio.gather(*tasks)
     return dict(results)
+
+# --- Fungsi Simulasi Fallback (agar dashboard tidak kosong) ---
+def generate_fallback_data():
+    data = {}
+    for plist in PAIRS.values():
+        for p in plist:
+            data[p] = round(random.uniform(-50, 50), 1)
+    return data
 
 # --- Sidebar ---
 st.sidebar.header("⚙️ Pengaturan")
@@ -85,11 +94,13 @@ for pl in PAIRS.values():
 with st.spinner(f"⏳ Mengambil data real-time {selected_tf}..."):
     changes = run_async(get_all_rates(all_pairs, tf_value))
 
-non_zero = {k:v for k,v in changes.items() if abs(v) > 0.1}
-if non_zero:
-    st.sidebar.success(f"✅ Real: {len(non_zero)} pair")
+# Cek apakah ada data real
+real_count = len([v for v in changes.values() if abs(v) > 0.1])
+if real_count > 0:
+    st.sidebar.success(f"✅ Real: {real_count} pair")
 else:
-    st.sidebar.warning("⚠️ Data real 0 — cek simbol di MT5")
+    st.sidebar.warning("⚠️ Data real 0 — gunakan simulasi sementara")
+    changes = generate_fallback_data()
 
 # --- Hitung Strength ---
 currency_strength = {}
@@ -147,11 +158,13 @@ tampil("JPY", c1); tampil("USD", c2); tampil("EUR", c3); tampil("GBP", c4)
 c1, c2, c3, c4 = st.columns(4)
 tampil("AUD", c1); tampil("NZD", c2); tampil("CAD", c3); tampil("CHF", c4)
 
-# --- Meter ---
+# --- Daily Currency Strength Meter ---
 st.subheader("📊 Daily Currency Strength Meter")
 sorted_curr = [c for c in PAIRS.keys() if c not in ["XAU", "BTC"]]
 sorted_curr = sorted(sorted_curr, key=lambda x: currency_strength[x], reverse=True)
-max_val = max(abs(v) for v in currency_strength.values() if v != 0) or 1
+max_val = max(abs(v) for v in currency_strength.values() if v != 0)
+if max_val == 0:
+    max_val = 1
 norm = {c: (currency_strength[c] / max_val) * 10 for c in sorted_curr}
 
 fig = go.Figure()
